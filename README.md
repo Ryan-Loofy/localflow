@@ -1,159 +1,80 @@
 # LocalFlow
 
-LocalFlow is a native macOS menu-bar dictation app. Hold a system-wide hotkey to record, release to transcribe with whisper.cpp, optionally clean the transcript with an OpenAI-compatible LLM, and paste it into the app that currently has focus.
+LocalFlow is a macOS menu-bar dictation app. Tap a key, talk, tap again (or press Enter), and the text is pasted into whatever app you are typing in, cleaned up: filler words and false starts removed, punctuation fixed, code names in `backticks`, long dictation split into paragraphs.
 
-It has no account system, analytics, crash reporting, or application backend. Audio is written only to a per-dictation temporary directory and deleted after insertion or cancellation.
+Everything runs on your Mac. Speech is transcribed by [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and cleaned up by a small local model in [Ollama](https://ollama.com). No account, no cloud service, no telemetry. Audio is deleted after each dictation.
 
-## What works
-
-- Hold-to-talk with the `fn` key by default, or a configured keyboard shortcut.
-- Double-tap to continue recording hands-free; tap once more to stop.
-- A hard five-minute recording cap. Lower values are configurable; values above 300 seconds are ignored.
-- Escape cancels audio capture or terminates an active `whisper-cli` process. Escape is observed passively and still reaches the foreground app.
-- A non-activating floating pill shows held, hands-free, and transcription states.
-- Pasteboard plus synthetic Command-V insertion. The transcript remains on the clipboard by default.
-- Menu-bar on/off toggle, settings reload, permission request, and launch-at-login toggle.
-- Local whisper.cpp `small`, `small.en`, `medium`, or `medium.en` models.
-- Optional cleanup through any OpenAI-compatible `/chat/completions` endpoint.
-
-## Honest privacy boundary
-
-whisper.cpp transcription is offline. LLM cleanup is offline only when `LLM_BASE_URL` points to a local server. If you point it at a hosted API, the raw transcript leaves the Mac and that provider may require an account. Those facts cannot be reconciled with a literal “no accounts, fully offline” promise.
-
-The default endpoint is local (`http://127.0.0.1:8080/v1`). If no server is running, LocalFlow falls back to the raw whisper.cpp transcript. Set `llm.enabled` to `false` to avoid even the local connection attempt. LocalFlow itself sends no telemetry.
+Typical speed from your last tap to pasted text: about 0.3 seconds for a short sentence, under 1 second for a paragraph.
 
 ## Requirements
 
-- macOS 13 or later.
-- Apple Command Line Tools (`xcode-select --install`).
-- CMake to build whisper.cpp. Homebrew users can run `brew install cmake`.
-- An OpenAI-compatible local or hosted LLM endpoint for transcript cleanup. This is optional because raw-transcript fallback is on by default.
+- An Apple Silicon Mac (M1 or later), macOS 13 or later.
+- 16 GB of memory recommended. It runs on 8 GB, but slowly.
+- About 3 GB of free disk space.
 
-## Build and install
+## Install
 
-From this directory:
+Open Terminal, go to the folder you downloaded or cloned, and run:
 
 ```bash
-./scripts/install-whisper.sh small.en
-./scripts/test.sh
-./scripts/install-app.sh
-open /Applications/LocalFlow.app
+./scripts/setup.sh
 ```
 
-`small.en` is the sensible English default (about 466 MB). Use `medium.en` for better accuracy at substantially higher memory, disk, and latency cost. Multilingual dictation should use `small` or `medium` and set `whisperLanguage` appropriately (or to `auto`). The model and CLI formats follow the official [whisper.cpp quick start](https://github.com/ggml-org/whisper.cpp#quick-start).
+To use **Caps Lock** as the dictation key instead of fn (recommended on keyboards whose fn key macOS never sees, such as many Keychron and Logitech keyboards), run this instead:
 
-The build is ad-hoc signed. Rebuilding or moving the app can cause macOS to ask for permissions again. A stable Developer ID signature is needed for polished distribution to other Macs.
-
-## Required macOS permissions
-
-On first launch, approve the prompts. Then verify all three entries under Apple menu → System Settings → Privacy & Security:
-
-1. **Microphone → LocalFlow: On** — records dictation audio. Apple documents this panel in [Control access to the microphone on Mac](https://support.apple.com/guide/mac-help/mchla1b1e1fe/mac).
-2. **Accessibility → LocalFlow: On** — installs the suppressing global hotkey tap and synthesizes Command-V. Apple documents this panel in [Allow accessibility apps to access your Mac](https://support.apple.com/guide/mac-help/mh43185/mac).
-3. **Input Monitoring → LocalFlow: On** — observes Escape without consuming it. Apple documents this panel in [Control access to input monitoring on Mac](https://support.apple.com/guide/mac-help/mchl4cedafb6/mac).
-
-Quit and reopen LocalFlow after changing Accessibility or Input Monitoring. If LocalFlow is absent from a list, use the add button in that panel and choose `/Applications/LocalFlow.app`. The menu-bar item’s **Request Permissions** action repeats the system permission requests it can trigger programmatically.
-
-LocalFlow does not need Full Disk Access, Screen Recording, Speech Recognition, or Automation permission.
-
-## Configure the LLM
-
-On first launch LocalFlow creates:
-
-```text
-~/Library/Application Support/LocalFlow/.env
+```bash
+./scripts/setup.sh --caps-lock
 ```
 
-The menu-bar item can open it. For a local OpenAI-compatible server:
+The script installs anything missing (Apple's command line tools, Homebrew, cmake, Ollama), builds whisper.cpp, downloads the speech model (about 470 MB) and the cleanup model (about 2 GB), installs LocalFlow into Applications and starts its two background services. It takes about 10 minutes the first time and is safe to run again.
 
-```dotenv
-LLM_API_KEY=
-LLM_BASE_URL=http://127.0.0.1:8080/v1
-LLM_MODEL=local-model
-```
+If it stops to install Apple's command line tools, finish that install and run the same command again.
 
-For a hosted compatible API, change the base URL and model and put its key in `LLM_API_KEY`. Do not put the key in `settings.json`. `.env` is read for every dictation, so key changes do not require a restart. LocalFlow forces both configuration files to owner-only (`0600`) permissions on launch.
+### Allow LocalFlow in System Settings
 
-The cleanup prompt is deliberately short: remove filler and abandoned false starts, repair punctuation, preserve meaning, and match casing to the dictated style. The model is instructed to return only edited text.
+macOS requires you to switch these on by hand. The setup script opens the right page.
 
-## Configure the hotkey and behavior
+1. **Microphone**: allow the prompt when it appears.
+2. **Accessibility**: Apple menu > System Settings > Privacy & Security > Accessibility, switch LocalFlow on. If it is missing, click + and choose `/Applications/LocalFlow.app`.
+3. **Input Monitoring**: same place, switch LocalFlow on.
 
-On first launch LocalFlow also creates:
+LocalFlow starts listening a few seconds after Accessibility is on. If you use fn as the key, also set System Settings > Keyboard > "Press 🌐 key to" to **Do Nothing**, or fn will open the emoji picker too.
 
-```text
-~/Library/Application Support/LocalFlow/settings.json
-```
+## Using it
 
-The defaults are equivalent to:
+- **Tap** the key once to start, talk, then **tap again or press Enter** to stop. The Enter press is not sent to your app, so it never submits a half-written message.
+- **Hold** the key for push-to-talk: recording stops when you let go.
+- **Escape** cancels and throws the recording away.
+- A small pill shows while it is listening and while it is working.
 
-```json
-{
-  "clipboardRestoreDelayMilliseconds": 400,
-  "doubleTapWindowMilliseconds": 350,
-  "enabled": true,
-  "hotkey": {
-    "key": "fn",
-    "modifiers": []
-  },
-  "llm": {
-    "apiKeyEnvironmentVariable": "LLM_API_KEY",
-    "baseURL": "http://127.0.0.1:8080/v1",
-    "enabled": true,
-    "fallbackToRawTranscript": true,
-    "model": "local-model"
-  },
-  "maxRecordingSeconds": 300,
-  "restorePreviousClipboard": false,
-  "whisperExecutable": "~/Library/Application Support/LocalFlow/whisper.cpp/build/bin/whisper-cli",
-  "whisperLanguage": "en",
-  "whisperModel": "~/Library/Application Support/LocalFlow/whisper.cpp/models/ggml-small.en.bin"
-}
-```
+## If it stops working
 
-After editing the file, choose **Reload Settings** from the menu-bar item.
+- **Nothing happens when you press the key.** Another app may have turned on macOS "secure input", which hides every key press from LocalFlow. Docker Desktop's window and password fields are common causes: close them. To see which app holds it: `ioreg -l -w 0 | grep SecureInput`.
+- **It worked, then stopped after an update or rebuild.** Builds you make yourself are signed ad hoc, so macOS forgets the Accessibility permission each time. Remove LocalFlow from Accessibility with the minus button and add it back.
+- **Text comes out uncleaned.** The cleanup service is not running. Run `./scripts/install-services.sh` again.
+- **Check what happened.** `~/Library/Logs/LocalFlow/localflow.log` records start-up, permission state and errors (never what you said), and `timing.log` records how long each step took.
 
-For a chord instead of `fn`, for example Control-Option-Space:
+## Settings
 
-```json
-"hotkey": {
-  "key": "space",
-  "modifiers": ["control", "option"]
-}
-```
+Settings live in `~/Library/Application Support/LocalFlow/settings.json`. After editing, choose **Reload Settings** from the menu-bar icon.
 
-Supported modifier names are `command`, `control`, `option`, and `shift`. Supported keys are letters, digits, `space`, `tab`, `return`, `backspace`, arrow keys, `f13` through `f20`, and the punctuation keys shown on a US keyboard. The unused extended function keys can be used without modifiers; other non-`fn` hotkeys require at least one modifier so a bad configuration cannot swallow ordinary typing system-wide. A configured chord is swallowed so it does not type into the foreground app. Escape is reserved for cancellation and is never swallowed.
+- `hotkey`: `{"key": "fn", "modifiers": []}` by default. Keys `f13` to `f20` work alone; other keys need at least one modifier (`command`, `control`, `option`, `shift`), for example `{"key": "space", "modifiers": ["control", "option"]}`.
+- `tapToToggle`: `true` (tap on, tap off). `false` uses hold-to-talk with double-tap for hands-free.
+- `skipCleanupWhenClean`: `true` skips the cleanup model for short dictation that is already clean, which saves about half a second.
+- `llm`: the cleanup model. Any OpenAI-compatible endpoint works; `.env` in the same folder overrides `baseURL` and `model` and holds an API key if one is needed. A hosted model formats better but sends your words off the Mac.
+- `restorePreviousClipboard`: `false` by default, so the dictated text stays on the clipboard.
 
-For a programmable keyboard key such as M1, map that physical key to F13 in the keyboard firmware, then use:
+## How it works
 
-```json
-"hotkey": {
-  "key": "f13",
-  "modifiers": []
-}
-```
+LocalFlow listens for the hotkey, records the microphone, sends the audio to the local whisper server (`127.0.0.1:8178`), sends the transcript to Ollama (`127.0.0.1:11434`) for cleanup when it needs it, then pastes with Command-V. Both models are woken the moment you start talking, so they are ready when you stop. The services run as login items (`~/Library/LaunchAgents/com.localflow.*.plist`) and keep their models loaded.
 
-Mapping to a real extended function key preserves key-down and key-up events, so hold-to-talk works. A recorded macro usually emits an immediate press and release and is therefore the wrong mechanism.
-
-Set `restorePreviousClipboard` to `true` to restore all prior pasteboard items after Command-V. Restoration is delayed by `clipboardRestoreDelayMilliseconds` so the foreground app has time to consume the paste. Clipboard managers may still observe the temporary transcript.
-
-## Interaction details
-
-- Hold longer than the double-tap window: release stops immediately.
-- Quick single tap: LocalFlow waits for the remainder of the 350 ms window, then stops.
-- Quick double-tap: the same uninterrupted recording becomes hands-free.
-- One more hotkey press: stops hands-free recording.
-- Escape: cancels at any point and deletes the temporary recording.
-
-The short single-tap delay is necessary to distinguish a single tap from a double-tap without cutting the audio between them.
+To uninstall: quit LocalFlow, delete `/Applications/LocalFlow.app`, run `launchctl bootout gui/$(id -u)/com.localflow.whisper` and the same for `com.localflow.ollama` and `com.localflow.capslock-f13`, then delete those plist files and `~/Library/Application Support/LocalFlow`.
 
 ## Development
 
 ```bash
-swift build
-./scripts/test.sh
-./scripts/build-app.sh
+./scripts/test.sh        # self-tests
+./scripts/install-app.sh # build, sign and install into /Applications
 ```
 
-The self-test covers hold/double-tap/third-tap/cancel/max-duration state transitions, `.env` parsing, endpoint construction, and the five-minute hard cap. This checkout’s standalone Command Line Tools omit both XCTest and Swift Testing, so the suite is a small framework-free executable instead of `swift test`.
-
-There is no automated end-to-end test for microphone permission, global event taps, or paste injection; macOS only exercises those correctly from a signed `.app` in a logged-in GUI session. Test those manually in TextEdit before relying on the app system-wide.
+`build-app.sh` signs with a local certificate named "LocalFlow Local Signing" when one is in your keychain, which keeps permissions across rebuilds; otherwise it signs ad hoc. The self-tests cover the state machine, settings, cleanup decisions and audio conversion. Microphone, global hotkeys and pasting can only be tested by hand in a signed app.

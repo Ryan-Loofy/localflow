@@ -53,8 +53,8 @@ struct HotkeySettings: Codable, Equatable {
 struct LLMCleanupSettings: Codable, Equatable {
     var enabled = true
     var fallbackToRawTranscript = true
-    var baseURL = "http://127.0.0.1:8080/v1"
-    var model = "local-model"
+    var baseURL = "http://127.0.0.1:11434/v1"
+    var model = "qwen2.5:3b"
     var apiKeyEnvironmentVariable = "LLM_API_KEY"
 }
 
@@ -84,8 +84,8 @@ final class ConfigStore {
             let starter = """
             # Optional for a local OpenAI-compatible server; required by most remote services.
             LLM_API_KEY=
-            LLM_BASE_URL=http://127.0.0.1:8080/v1
-            LLM_MODEL=local-model
+            LLM_BASE_URL=http://127.0.0.1:11434/v1
+            LLM_MODEL=qwen2.5:3b
             """
             try starter.write(to: environmentURL, atomically: true, encoding: .utf8)
         }
