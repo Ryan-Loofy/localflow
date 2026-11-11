@@ -2,7 +2,7 @@
 
 LocalFlow is a macOS menu-bar dictation app. Tap a key, talk, tap again (or press Enter), and the text is pasted into whatever app you are typing in, cleaned up: filler words and false starts removed, punctuation fixed, code names in `backticks`, long dictation split into paragraphs.
 
-![LocalFlow: tap Caps Lock, talk, and the cleaned-up text is pasted where you are typing](docs/demo.gif)
+![LocalFlow: tap your dictation key, talk, and the cleaned-up text is pasted where you are typing](docs/demo.gif)
 
 Everything runs on your Mac. Speech is transcribed by [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and cleaned up by a small local model in [Ollama](https://ollama.com). No account, no cloud service, no telemetry. Audio is deleted after each dictation.
 
