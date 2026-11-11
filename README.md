@@ -11,8 +11,8 @@ Typical speed from your last tap to pasted text: about 0.3 seconds for a short s
 ## Requirements
 
 - An Apple Silicon Mac (M1 or later), macOS 13 or later.
-- 16 GB of memory recommended. It runs on 8 GB, but slowly.
-- About 3 GB of free disk space.
+- 16 GB of memory. The cleanup model keeps about 5 GB loaded so it answers fast. On an 8 GB Mac, switch to the smaller `qwen2.5:1.5b` (see Settings): faster, but more likely to drop or change a word.
+- About 7 GB of free disk space.
 
 ## Install
 
@@ -28,7 +28,7 @@ To use **Caps Lock** as the dictation key instead of fn (recommended on keyboard
 ./scripts/setup.sh --caps-lock
 ```
 
-The script installs anything missing (Apple's command line tools, Homebrew, cmake, Ollama), builds whisper.cpp, downloads the speech model (about 470 MB) and the cleanup model (about 2 GB), installs LocalFlow into Applications and starts its two background services. It takes about 10 minutes the first time and is safe to run again.
+The script installs anything missing (Apple's command line tools, Homebrew, cmake, Ollama), builds whisper.cpp, downloads the speech model (about 470 MB) and the cleanup model, Qwen 2.5 7B (about 4.7 GB, Apache 2.0 license), installs LocalFlow into Applications and starts its two background services. It takes about 10 minutes the first time and is safe to run again.
 
 If it stops to install Apple's command line tools, finish that install and run the same command again.
 
@@ -63,7 +63,7 @@ Settings live in `~/Library/Application Support/LocalFlow/settings.json`. After 
 - `hotkey`: `{"key": "fn", "modifiers": []}` by default. Keys `f13` to `f20` work alone; other keys need at least one modifier (`command`, `control`, `option`, `shift`), for example `{"key": "space", "modifiers": ["control", "option"]}`.
 - `tapToToggle`: `true` (tap on, tap off). `false` uses hold-to-talk with double-tap for hands-free.
 - `skipCleanupWhenClean`: `true` skips the cleanup model for short dictation that is already clean, which saves about half a second.
-- `llm`: the cleanup model. Any OpenAI-compatible endpoint works; `.env` in the same folder overrides `baseURL` and `model` and holds an API key if one is needed. A hosted model formats better but sends your words off the Mac.
+- `llm`: the cleanup model. Any OpenAI-compatible endpoint works; `.env` in the same folder overrides `baseURL` and `model` and holds an API key if one is needed. A hosted model formats better but sends your words off the Mac. To use the smaller local model, run `ollama pull qwen2.5:1.5b` and set `LLM_MODEL=qwen2.5:1.5b` in `.env`.
 - `restorePreviousClipboard`: `false` by default, so the dictated text stays on the clipboard.
 
 ## How it works

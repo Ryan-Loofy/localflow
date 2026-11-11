@@ -158,7 +158,9 @@ expect(TranscriptCleaner.needsCleanup("We should, we should ship it."), "repeate
 expect(TranscriptCleaner.needsCleanup("I was going to... never mind."), "trailing off needs cleanup")
 expect(!TranscriptCleaner.needsCleanup("Thank you. You did it."), "different words do not count as a repeat")
 expect(TranscriptCleaner.needsCleanup(String(repeating: "word ", count: 20)), "long dictation is always cleaned for formatting")
-expect(TranscriptCleaner.messages(for: "x").count == 6, "cleanup sends system prompt, two examples and the transcript")
+expect(TranscriptCleaner.messages(for: "x").count == 10, "cleanup sends system prompt, four examples and the transcript")
+expect(TranscriptCleaner.messages(for: "x").last?["content"] == "<transcript>x</transcript>", "cleanup wraps the transcript in tags")
+expect(TranscriptCleaner.unwrap("<transcript> Hi. </transcript>") == "Hi.", "echoed tags are stripped from the output")
 
 do {
     let old = #"{"enabled":true,"hotkey":{"key":"f13","modifiers":[]},"llm":{"enabled":false,"model":"m","baseURL":"http://x","fallbackToRawTranscript":true,"apiKeyEnvironmentVariable":"K"}}"#

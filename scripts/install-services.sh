@@ -14,7 +14,7 @@ for arg in "$@"; do
   esac
 done
 
-CLEANUP_MODEL="qwen2.5:3b"
+CLEANUP_MODEL="qwen2.5:7b"
 SUPPORT_DIR="$HOME/Library/Application Support/LocalFlow"
 WHISPER_DIR="$SUPPORT_DIR/whisper.cpp"
 WHISPER_SERVER="$WHISPER_DIR/build/bin/whisper-server"
@@ -101,7 +101,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 curl -s -m 2 -o /dev/null http://127.0.0.1:11434/ || { echo "Ollama did not start; see /tmp/localflow-ollama.log" >&2; exit 1; }
-echo "Downloading the cleanup model ($CLEANUP_MODEL, about 2 GB) if it is not already here..."
+echo "Downloading the cleanup model ($CLEANUP_MODEL, about 4.7 GB) if it is not already here..."
 OLLAMA_HOST=127.0.0.1:11434 "$OLLAMA_BIN" pull "$CLEANUP_MODEL"
 
 if [[ "$CAPS_LOCK" == 1 ]]; then
