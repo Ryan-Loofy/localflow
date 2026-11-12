@@ -172,6 +172,16 @@ do {
     fputs("FAIL  older settings file threw: \(error)\n", stderr)
 }
 
+do {
+    let partial = #"{"llm":{"baseURL":"http://127.0.0.1:11434/v1","model":"qwen2.5:7b"}}"#
+    let settings = try JSONDecoder().decode(AppSettings.self, from: Data(partial.utf8))
+    expect(settings.llm.model == "qwen2.5:7b" && settings.llm.enabled && settings.llm.apiKeyEnvironmentVariable == "LLM_API_KEY", "a partial llm section keeps the other defaults")
+    expect(AppSettings().llm.baseURL == "http://127.0.0.1:8179/v1" && !AppSettings().mapCapsLock, "new installs clean up with the bundled server")
+} catch {
+    failureCount += 1
+    fputs("FAIL  partial llm section threw: \(error)\n", stderr)
+}
+
 if failureCount > 0 {
     fputs("\n\(failureCount) self-test(s) failed.\n", stderr)
     exit(1)

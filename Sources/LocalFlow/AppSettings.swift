@@ -13,6 +13,8 @@ struct AppSettings: Codable, Equatable {
     var whisperServerURL = "http://127.0.0.1:8178/inference"
     var tapToToggle = true
     var skipCleanupWhenClean = true
+    /// Caps Lock becomes F13 while LocalFlow runs, so it can be the dictation key.
+    var mapCapsLock = false
     var llm = LLMCleanupSettings()
 
     var doubleTapWindow: TimeInterval {
@@ -41,6 +43,7 @@ extension AppSettings {
         whisperServerURL = try c.decodeIfPresent(String.self, forKey: .whisperServerURL) ?? d.whisperServerURL
         tapToToggle = try c.decodeIfPresent(Bool.self, forKey: .tapToToggle) ?? d.tapToToggle
         skipCleanupWhenClean = try c.decodeIfPresent(Bool.self, forKey: .skipCleanupWhenClean) ?? d.skipCleanupWhenClean
+        mapCapsLock = try c.decodeIfPresent(Bool.self, forKey: .mapCapsLock) ?? d.mapCapsLock
         llm = try c.decodeIfPresent(LLMCleanupSettings.self, forKey: .llm) ?? d.llm
     }
 }
@@ -53,9 +56,23 @@ struct HotkeySettings: Codable, Equatable {
 struct LLMCleanupSettings: Codable, Equatable {
     var enabled = true
     var fallbackToRawTranscript = true
-    var baseURL = "http://127.0.0.1:11434/v1"
-    var model = "qwen2.5:7b"
+    /// The cleanup server bundled in LocalFlow.app. Point this at Ollama or any OpenAI-compatible endpoint to use another.
+    var baseURL = "http://127.0.0.1:8179/v1"
+    var model = "qwen2.5-7b-instruct"
     var apiKeyEnvironmentVariable = "LLM_API_KEY"
+}
+
+extension LLMCleanupSettings {
+    // Like AppSettings: a partial "llm" section keeps the defaults for what it leaves out.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = LLMCleanupSettings()
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? d.enabled
+        fallbackToRawTranscript = try c.decodeIfPresent(Bool.self, forKey: .fallbackToRawTranscript) ?? d.fallbackToRawTranscript
+        baseURL = try c.decodeIfPresent(String.self, forKey: .baseURL) ?? d.baseURL
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? d.model
+        apiKeyEnvironmentVariable = try c.decodeIfPresent(String.self, forKey: .apiKeyEnvironmentVariable) ?? d.apiKeyEnvironmentVariable
+    }
 }
 
 final class ConfigStore {
@@ -82,10 +99,11 @@ final class ConfigStore {
         }
         if !fileManager.fileExists(atPath: environmentURL.path) {
             let starter = """
-            # Optional for a local OpenAI-compatible server; required by most remote services.
+            # Leave these empty to use the cleanup model bundled with LocalFlow.
+            # To use Ollama instead: LLM_BASE_URL=http://127.0.0.1:11434/v1 and LLM_MODEL=qwen2.5:7b
             LLM_API_KEY=
-            LLM_BASE_URL=http://127.0.0.1:11434/v1
-            LLM_MODEL=qwen2.5:7b
+            LLM_BASE_URL=
+            LLM_MODEL=
             """
             try starter.write(to: environmentURL, atomically: true, encoding: .utf8)
         }

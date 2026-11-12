@@ -104,6 +104,20 @@ curl -s -m 2 -o /dev/null http://127.0.0.1:11434/ || { echo "Ollama did not star
 echo "Downloading the cleanup model ($CLEANUP_MODEL, about 4.7 GB) if it is not already here..."
 OLLAMA_HOST=127.0.0.1:11434 "$OLLAMA_BIN" pull "$CLEANUP_MODEL"
 
+# This route cleans up with Ollama, not the server bundled in the downloadable app.
+mkdir -p "$SUPPORT_DIR"
+/usr/bin/python3 -I - "$SUPPORT_DIR/settings.json" "$CLEANUP_MODEL" <<'PY'
+import json, os, sys
+path, model = sys.argv[1], sys.argv[2]
+settings = json.load(open(path)) if os.path.exists(path) else {}
+llm = {"enabled": True, "fallbackToRawTranscript": True, "apiKeyEnvironmentVariable": "LLM_API_KEY"}
+llm.update(settings.get("llm", {}))
+llm.update({"baseURL": "http://127.0.0.1:11434/v1", "model": model})
+settings["llm"] = llm
+json.dump(settings, open(path, "w"), indent=2, sort_keys=True)
+os.chmod(path, 0o600)
+PY
+
 if [[ "$CAPS_LOCK" == 1 ]]; then
   # Caps Lock (HID usage 0x39) becomes F13 (0x68) on every keyboard, re-applied at each login.
   MAP='{"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":0x700000039,"HIDKeyboardModifierMappingDst":0x700000068}]}'

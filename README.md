@@ -11,12 +11,20 @@ Typical speed from your last tap to pasted text: about 0.3 seconds for a short s
 ## Requirements
 
 - An Apple Silicon Mac (M1 or later), macOS 13 or later.
-- 16 GB of memory. The cleanup model keeps about 5 GB loaded so it answers fast. On an 8 GB Mac, switch to the smaller `qwen2.5:1.5b` (see Settings): faster, but more likely to drop or change a word.
+- 16 GB of memory. The cleanup model keeps about 5 GB loaded so it answers fast. On an 8 GB Mac, use Ollama with the smaller `qwen2.5:1.5b` (see Settings): faster, but more likely to drop or change a word.
 - About 7 GB of free disk space.
 
-## Install
+## Download
 
-Open Terminal, go to the folder you downloaded or cloned, and run:
+1. Download [LocalFlow.dmg](https://github.com/Ryan-Loofy/localflow/releases/latest/download/LocalFlow.dmg), open it and drag LocalFlow into Applications.
+2. Open LocalFlow. LocalFlow is not signed with an Apple Developer ID yet, so macOS says it cannot verify the developer: click **Done**, then go to System Settings > Privacy & Security, scroll down and click **Open Anyway**.
+3. In the LocalFlow window, click **Download** (the two models, 5.2 GB, once), allow the Microphone, Accessibility and Input Monitoring, and pick your dictation key.
+
+The app carries its own speech server ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) and cleanup server ([llama.cpp](https://github.com/ggml-org/llama.cpp)), so nothing else needs installing. Models are kept in `~/Library/Application Support/LocalFlow/models` and checked against their published SHA-256 after download.
+
+## Build from source
+
+Open Terminal, go to the folder you cloned, and run:
 
 ```bash
 ./scripts/setup.sh
@@ -28,7 +36,7 @@ To use **Caps Lock** as the dictation key instead of fn (recommended on keyboard
 ./scripts/setup.sh --caps-lock
 ```
 
-The script installs anything missing (Apple's command line tools, Homebrew, cmake, Ollama), builds whisper.cpp, downloads the speech model (about 470 MB) and the cleanup model, Qwen 2.5 7B (about 4.7 GB, Apache 2.0 license), installs LocalFlow into Applications and starts its two background services. It takes about 10 minutes the first time and is safe to run again.
+This route uses Ollama for cleanup instead of the bundled server. The script installs anything missing (Apple's command line tools, Homebrew, cmake, Ollama), builds whisper.cpp, downloads the speech model (about 470 MB) and the cleanup model, Qwen 2.5 7B (about 4.7 GB, Apache 2.0 license), installs LocalFlow into Applications and starts its two background services. It takes about 10 minutes the first time and is safe to run again.
 
 If it stops to install Apple's command line tools, finish that install and run the same command again.
 
@@ -75,8 +83,10 @@ To uninstall: quit LocalFlow, delete `/Applications/LocalFlow.app`, run `launchc
 ## Development
 
 ```bash
-./scripts/test.sh        # self-tests
-./scripts/install-app.sh # build, sign and install into /Applications
+./scripts/test.sh          # self-tests
+./scripts/build-servers.sh # build the bundled whisper-server and llama-server into vendor/bin
+./scripts/install-app.sh   # build, sign and install into /Applications
+./scripts/release.sh       # build the downloadable dist/LocalFlow.dmg
 ```
 
 `build-app.sh` signs with a local certificate named "LocalFlow Local Signing" when one is in your keychain, which keeps permissions across rebuilds; otherwise it signs ad hoc. The self-tests cover the state machine, settings, cleanup decisions and audio conversion. Microphone, global hotkeys and pasting can only be tested by hand in a signed app.

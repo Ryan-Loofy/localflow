@@ -32,6 +32,7 @@ final class MenuBarController {
         menu.addItem(launch)
 
         menu.addItem(.separator())
+        menu.addItem(item("Set Up LocalFlow...", action: #selector(ApplicationController.showSetup(_:))))
         menu.addItem(item("Open Settings File", action: #selector(ApplicationController.openSettingsFile(_:))))
         menu.addItem(item("Open .env File", action: #selector(ApplicationController.openEnvironmentFile(_:))))
         menu.addItem(item("Reload Settings", action: #selector(ApplicationController.reloadSettings(_:))))

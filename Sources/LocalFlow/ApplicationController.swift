@@ -8,6 +8,8 @@ final class ApplicationController: NSObject {
     let configStore: ConfigStore
     private(set) var settings: AppSettings
     private let pill = FloatingPillController()
+    private let servers = BundledServers()
+    private var setupWindow: SetupWindowController?
     private var lastError: String?
 
     private lazy var coordinator: DictationCoordinator = {
@@ -39,7 +41,17 @@ final class ApplicationController: NSObject {
     var statusText: String {
         if let lastError { return "Error: \(lastError)" }
         if !settings.enabled { return "LocalFlow is off" }
+        if setupWindow?.isDownloading == true { return "Downloading models..." }
+        if !missingModels.isEmpty { return "Finish setup to start dictating" }
         return "LocalFlow is ready"
+    }
+
+    private var environment: [String: String] {
+        (try? configStore.loadEnvironment()) ?? [:]
+    }
+
+    private var missingModels: [ModelFile] {
+        BundledServers.neededModels(settings, environment: environment).filter { !ModelStore.isInstalled($0) }
     }
 
     var launchAtLoginEnabled: Bool {
@@ -59,9 +71,62 @@ final class ApplicationController: NSObject {
         hotkeyMonitor.isCapturing = { [weak self] in self?.coordinator.isCapturingAudio ?? false }
         hotkeyMonitor.onStopKey = { [weak self] in self?.coordinator.stopKeyPressed() }
         escapeMonitor.start()
+        applyCapsLockMapping()
         applyHotkeyState()
-        promptForAccessibility()
-        Task { _ = await AudioRecorder.requestPermission() }
+        if BundledServers.isBundled && (!missingModels.isEmpty || !AXIsProcessTrusted()) {
+            showSetup(nil)
+        } else {
+            promptForAccessibility()
+            Task { _ = await AudioRecorder.requestPermission() }
+        }
+        startServers()
+    }
+
+    @objc func showSetup(_ sender: Any?) {
+        if setupWindow == nil {
+            setupWindow = SetupWindowController(owner: self, models: BundledServers.neededModels(settings, environment: environment))
+        }
+        setupWindow?.show()
+    }
+
+    /// Called by the setup window when a download finishes.
+    func modelsChanged() {
+        startServers()
+        menuBar.refresh()
+    }
+
+    func setDictationKey(capsLock: Bool) {
+        settings.mapCapsLock = capsLock
+        settings.hotkey = HotkeySettings(key: capsLock ? "f13" : "fn", modifiers: [])
+        saveSettings()
+        coordinator.update(settings: settings)
+        applyCapsLockMapping(clearWhenOff: true)
+        applyHotkeyState()
+        menuBar.refresh()
+    }
+
+    private func startServers() {
+        let settings = settings
+        let environment = environment
+        Task { await servers.startNeeded(settings: settings, environment: environment) }
+    }
+
+    /// Caps Lock (HID 0x39) becomes F13 (0x68) until logout; LocalFlow re-applies it at each launch.
+    private func applyCapsLockMapping(clearWhenOff: Bool = false) {
+        guard settings.mapCapsLock || clearWhenOff else { return }
+        let mapping = settings.mapCapsLock
+            ? #"{"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":0x700000039,"HIDKeyboardModifierMappingDst":0x700000068}]}"#
+            : #"{"UserKeyMapping":[]}"#
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hidutil")
+        process.arguments = ["property", "--set", mapping]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            DebugLog.write("hidutil failed: \(error.localizedDescription)")
+        }
     }
 
     @objc func toggleEnabled(_ sender: Any?) {
@@ -102,7 +167,9 @@ final class ApplicationController: NSObject {
             settings = try configStore.load()
             lastError = nil
             coordinator.update(settings: settings)
+            applyCapsLockMapping()
             applyHotkeyState()
+            startServers()
         } catch {
             let message = "Settings: \(error.localizedDescription)"
             lastError = message
@@ -123,6 +190,7 @@ final class ApplicationController: NSObject {
     }
 
     func shutdown() {
+        servers.stopAll()
         coordinator.cancel()
         hotkeyMonitor.stop()
         escapeMonitor.stop()

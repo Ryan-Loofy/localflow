@@ -15,12 +15,22 @@ enum LocalFlowMain {
 @MainActor
 private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: ApplicationController?
+    private var termSource: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             let controller = try ApplicationController(configStore: ConfigStore())
             self.controller = controller
             controller.start()
+            // A plain `kill` skips applicationWillTerminate; stop the bundled servers then too.
+            signal(SIGTERM, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+            source.setEventHandler { [weak self] in
+                MainActor.assumeIsolated { self?.controller?.shutdown() }
+                exit(0)
+            }
+            source.resume()
+            termSource = source
         } catch {
             let alert = NSAlert()
             alert.messageText = "LocalFlow could not start"
