@@ -20,6 +20,7 @@ fi
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 install -m 755 "$BIN_DIR/LocalFlow" "$CONTENTS_DIR/MacOS/LocalFlow"
 install -m 644 "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
+install -m 644 "$PROJECT_DIR/Resources/AppIcon.icns" "$CONTENTS_DIR/Resources/AppIcon.icns"
 # The speech and cleanup servers ship inside the app (built by scripts/build-servers.sh).
 VENDOR_BIN="$PROJECT_DIR/vendor/bin"
 if [[ -x "$VENDOR_BIN/whisper-server" && -x "$VENDOR_BIN/llama-server" ]]; then

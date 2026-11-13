@@ -12,8 +12,16 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 ditto dist/LocalFlow.app "$STAGE/LocalFlow.app"
 ln -s /Applications "$STAGE/Applications"
+# The mounted disk shows the app icon too.
+cp Resources/AppIcon.icns "$STAGE/.VolumeIcon.icns"
 rm -f dist/LocalFlow.dmg
-hdiutil create -quiet -volname "LocalFlow" -srcfolder "$STAGE" -fs HFS+ -format UDZO dist/LocalFlow.dmg
+hdiutil create -quiet -volname "LocalFlow" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$STAGE.rw.dmg"
+MOUNT="$(mktemp -d)"
+hdiutil attach -quiet -nobrowse -mountpoint "$MOUNT" "$STAGE.rw.dmg"
+SetFile -a C "$MOUNT"
+hdiutil detach -quiet "$MOUNT"
+hdiutil convert -quiet "$STAGE.rw.dmg" -format UDZO -o dist/LocalFlow.dmg
+rm -f "$STAGE.rw.dmg"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
 echo "Built dist/LocalFlow.dmg (version $VERSION, $(du -h dist/LocalFlow.dmg | cut -f1))"
 shasum -a 256 dist/LocalFlow.dmg

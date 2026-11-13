@@ -16,8 +16,8 @@ Typical speed from your last tap to pasted text: about 0.3 seconds for a short s
 
 ## Download
 
-1. Download [LocalFlow.dmg](https://github.com/Ryan-Loofy/localflow/releases/latest/download/LocalFlow.dmg), open it and drag LocalFlow into Applications.
-2. Open LocalFlow. LocalFlow is not signed with an Apple Developer ID yet, so macOS says it cannot verify the developer: click **Done**, then go to System Settings > Privacy & Security, scroll down and click **Open Anyway**.
+1. Download [LocalFlow.dmg](https://github.com/Ryan-Loofy/localflow-app/releases/latest/download/LocalFlow.dmg) (or from [localflowvoice.com](https://localflowvoice.com)), open it and drag LocalFlow into Applications.
+2. Open LocalFlow. It is not signed with an Apple Developer ID yet, so macOS says it could not verify LocalFlow and offers only **Done**: click it. Then open System Settings > Privacy & Security, scroll to the very bottom, and click **Open Anyway** next to "LocalFlow was blocked". Or skip that with Terminal: `xattr -dr com.apple.quarantine /Applications/LocalFlow.app`.
 3. In the LocalFlow window, click **Download** (the two models, 5.2 GB, once), allow the Microphone, Accessibility and Input Monitoring, and pick your dictation key.
 
 The app carries its own speech server ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) and cleanup server ([llama.cpp](https://github.com/ggml-org/llama.cpp)), so nothing else needs installing. Models are kept in `~/Library/Application Support/LocalFlow/models` and checked against their published SHA-256 after download.
