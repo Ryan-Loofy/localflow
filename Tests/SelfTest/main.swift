@@ -78,6 +78,19 @@ do {
     expect(settings.maximumRecordingDuration == 300, "recording duration is capped at five minutes")
 }
 
+expect(UpdateChecker.isNewer("v0.2.3", than: "0.2.2"), "a newer release tag is offered")
+expect(!UpdateChecker.isNewer("v0.2.2", than: "0.2.2"), "the same version is up to date")
+expect(UpdateChecker.isNewer("v0.10.0", than: "0.9.1"), "versions compare by number, not text")
+expect(!UpdateChecker.isNewer("v0.2.1", than: "0.2.2"), "an older release is not offered")
+expect(HotkeyDefinition.soloModifierName(for: 61) == "right_option", "Right Option is recognized as a lone modifier key")
+expect((try? HotkeyDefinition(settings: HotkeySettings(key: "right_option", modifiers: [])))?.soloFlag == .maskAlternate, "Right Option alone is a valid dictation key")
+expect((try? HotkeyDefinition(settings: HotkeySettings(key: "fn", modifiers: [])))?.isFunctionKey == true, "fn is still the function key")
+expect(HotkeyDefinition.displayName(HotkeySettings(key: "right_command", modifiers: []), capsLock: false) == "Right ⌘", "a lone modifier key reads as Right ⌘")
+expect(HotkeyDefinition.keyName(for: 49) == "space", "a recorded key code maps back to its settings name")
+expect(HotkeyDefinition.displayName(HotkeySettings(key: "space", modifiers: ["command", "option"]), capsLock: false) == "⌥⌘ Space", "a custom shortcut reads in macOS modifier order")
+expect(HotkeyDefinition.displayName(HotkeySettings(key: "f13", modifiers: []), capsLock: true) == "Caps Lock", "Caps Lock mapped to F13 reads as Caps Lock")
+expect((try? HotkeyDefinition(settings: HotkeySettings(key: "d", modifiers: ["control", "shift"]))) != nil, "a recorded letter with modifiers is a valid hotkey")
+
 do {
     let hotkey = try HotkeyDefinition(settings: HotkeySettings(key: "f13", modifiers: []))
     expect(hotkey.keyCode == 105, "F13 is accepted without modifiers for programmable keys")

@@ -12,6 +12,10 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
     private var models: [ModelFile]
     private var downloader: ModelDownloader?
     private var pollTimer: Timer?
+    private var hasBeenShown = false
+    private var micWasGranted = false
+    private var axWasGranted = false
+    private var permissionsKnown = false
 
     private var bars: [String: NSProgressIndicator] = [:]
     private var modelLabels: [String: NSTextField] = [:]
@@ -19,13 +23,18 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
     private let downloadError = NSTextField(wrappingLabelWithString: "")
     private let micStatus = NSTextField(labelWithString: "")
     private let axStatus = NSTextField(labelWithString: "")
-    private let inputStatus = NSTextField(labelWithString: "")
     private let keyPopup = NSPopUpButton()
     private let keyNote = NSTextField(wrappingLabelWithString: "")
+    private let recordButton = NSButton(title: "Record shortcut", target: nil, action: nil)
+    private var recordMonitor: Any?
+    private let axHint = NSTextField(wrappingLabelWithString: "")
+    private let keyCap = NSTextField(labelWithString: "")
+    private let readyLabel = NSTextField(wrappingLabelWithString: "")
     private let loginCheck = NSButton(checkboxWithTitle: "Open LocalFlow when I log in", target: nil, action: nil)
     private let doneButton = NSButton(title: "Done", target: nil, action: nil)
 
     var isDownloading: Bool { downloader != nil }
+    var isVisible: Bool { window.isVisible }
 
     init(owner: ApplicationController, models: [ModelFile]) {
         self.owner = owner
@@ -41,9 +50,11 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
 
     func show() {
         refresh()
-        window.center()
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        if !hasBeenShown { window.center(); hasBeenShown = true }
+        // A menu-bar app has no Dock icon, so a window behind System Settings is lost.
+        // While this window is open, LocalFlow shows in the Dock and the app switcher.
+        NSApp.setActivationPolicy(.regular)
+        bringToFront()
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
@@ -53,6 +64,13 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         pollTimer?.invalidate()
         pollTimer = nil
+        stopRecording()
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func bringToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     // MARK: layout
@@ -97,15 +115,34 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(heading("2. Allow LocalFlow"))
         stack.addArrangedSubview(permissionRow("Microphone", micStatus, "Allow", #selector(allowMicrophone)))
         stack.addArrangedSubview(permissionRow("Accessibility (to paste)", axStatus, "Open Settings", #selector(openAccessibility)))
-        stack.addArrangedSubview(permissionRow("Input Monitoring (for the key)", inputStatus, "Open Settings", #selector(openInputMonitoring)))
+        stack.addArrangedSubview(body("When you switch on Accessibility in System Settings, this window comes back on its own."))
+        axHint.font = .systemFont(ofSize: 11)
+        axHint.textColor = .secondaryLabelColor
+        axHint.preferredMaxLayoutWidth = 472
+        axHint.stringValue = "Already switched on but this still says Not yet? An older copy of LocalFlow holds that switch. In System Settings, select LocalFlow, click the minus button, then click Open Settings here again."
+        stack.addArrangedSubview(axHint)
 
         stack.addArrangedSubview(spacer())
         stack.addArrangedSubview(heading("3. Pick your dictation key"))
-        keyPopup.addItems(withTitles: ["Caps Lock", "fn (Globe)"])
-        keyPopup.selectItem(at: owner.settings.hotkey.key == "fn" ? 1 : 0)
+        keyPopup.addItems(withTitles: ["Caps Lock", "fn (Globe)", "Custom shortcut"])
+        let current = owner.settings.hotkey
+        keyPopup.selectItem(at: current.key == "fn" ? 1 : (owner.settings.mapCapsLock && current.key == "f13" && current.modifiers.isEmpty) ? 0 : 2)
         keyPopup.target = self
         keyPopup.action = #selector(keyChanged)
-        stack.addArrangedSubview(keyPopup)
+        recordButton.target = self
+        recordButton.action = #selector(recordShortcut)
+        recordButton.bezelStyle = .rounded
+        keyCap.font = .systemFont(ofSize: 14, weight: .semibold)
+        keyCap.alignment = .center
+        keyCap.wantsLayer = true
+        keyCap.layer?.cornerRadius = 6
+        keyCap.layer?.borderWidth = 1.5
+        keyCap.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        keyCap.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        let keyRow = NSStackView(views: [keyPopup, keyCap, recordButton])
+        keyRow.orientation = .horizontal
+        keyRow.spacing = 8
+        stack.addArrangedSubview(keyRow)
         keyNote.font = .systemFont(ofSize: 11)
         keyNote.textColor = .secondaryLabelColor
         keyNote.preferredMaxLayoutWidth = 472
@@ -119,6 +156,9 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
         doneButton.action = #selector(done)
         doneButton.bezelStyle = .rounded
         doneButton.keyEquivalent = "\r"
+        readyLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        readyLabel.preferredMaxLayoutWidth = 472
+        stack.addArrangedSubview(readyLabel)
         stack.addArrangedSubview(doneButton)
 
         window.contentView = stack
@@ -178,10 +218,41 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
         downloadButton.isHidden = allModels
         downloadButton.isEnabled = !isDownloading
 
-        set(micStatus, AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
-        set(axStatus, AXIsProcessTrusted())
-        set(inputStatus, CGPreflightListenEventAccess())
-        doneButton.isEnabled = allModels
+        let mic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        let ax = AXIsProcessTrusted()
+        set(micStatus, mic)
+        set(axStatus, ax)
+        axHint.isHidden = ax
+        // A permission just turned on in System Settings: come back to the front.
+        if permissionsKnown, window.isVisible, (ax && !axWasGranted) || (mic && !micWasGranted) {
+            DebugLog.write("setup: permission granted (microphone=\(mic) accessibility=\(ax)); bringing setup to front")
+            bringToFront()
+        }
+        permissionsKnown = true
+        micWasGranted = mic
+        axWasGranted = ax
+        doneButton.isEnabled = allModels && mic && ax
+        if !allModels {
+            setReady(false, "Not ready yet: download the models above.")
+        } else if !mic || !ax {
+            setReady(false, "Not ready yet: allow \(!mic && !ax ? "the Microphone and Accessibility" : !mic ? "the Microphone" : "Accessibility") above.")
+        } else if recordMonitor != nil {
+            setReady(false, "Recording your shortcut: press it now.")
+        } else {
+            setReady(true, "Ready. Press \(keyName) in any app, talk, and press it again.")
+        }
+    }
+
+    private func setReady(_ ready: Bool, _ text: String) {
+        readyLabel.stringValue = text
+        readyLabel.textColor = ready ? .systemGreen : .systemOrange
+    }
+
+    private func showKeyCap(recording: Bool) {
+        keyCap.stringValue = recording ? "Press keys…" : keyName
+        keyCap.textColor = recording ? .systemOrange : .labelColor
+        keyCap.layer?.borderColor = (recording ? NSColor.systemOrange : NSColor.separatorColor).cgColor
+        keyCap.layer?.backgroundColor = (recording ? NSColor.systemOrange.withAlphaComponent(0.08) : NSColor.controlBackgroundColor).cgColor
     }
 
     private func set(_ field: NSTextField, _ granted: Bool) {
@@ -189,10 +260,27 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
         field.textColor = granted ? .systemGreen : .secondaryLabelColor
     }
 
+    private var keyName: String {
+        HotkeyDefinition.displayName(owner.settings.hotkey, capsLock: owner.settings.mapCapsLock)
+    }
+
     private func updateKeyNote() {
-        keyNote.stringValue = keyPopup.indexOfSelectedItem == 0
-            ? "Caps Lock stops working as Caps Lock while LocalFlow is running."
-            : "Also set System Settings > Keyboard > \"Press 🌐 key to\" to Do Nothing. Some keyboards (many Keychron and Logitech) never send fn to macOS: use Caps Lock there."
+        recordButton.isHidden = keyPopup.indexOfSelectedItem != 2
+        showKeyCap(recording: false)
+        refresh()
+        switch keyPopup.indexOfSelectedItem {
+        case 0:
+            keyNote.stringValue = "Caps Lock stops working as Caps Lock while LocalFlow is running."
+        case 1:
+            keyNote.stringValue = "Also set System Settings > Keyboard > \"Press 🌐 key to\" to Do Nothing. Some keyboards (many Keychron and Logitech) never send fn to macOS: use Caps Lock there."
+        default:
+            let isCustom = !(owner.settings.hotkey.key == "fn" || (owner.settings.mapCapsLock && owner.settings.hotkey.key == "f13" && owner.settings.hotkey.modifiers.isEmpty))
+            keyNote.stringValue = isCustom
+                ? "Saved: \(keyName) is your dictation key. Click Record shortcut to change it."
+                    + (owner.settings.hotkey.key.hasPrefix("left_command") || owner.settings.hotkey.key.hasPrefix("left_control")
+                        ? " \(keyName) is part of everyday shortcuts like ⌘C, so a right-hand key such as Right ⌥ works better." : "")
+                : "Click Record shortcut, then press a combination such as ⌥ Space or ⌃ ⇧ D, or one modifier key on its own such as Right ⌥. A key used on its own stops doing its normal job while LocalFlow runs."
+        }
     }
 
     // MARK: actions
@@ -245,14 +333,101 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
-    @objc private func openInputMonitoring() {
-        _ = CGRequestListenEventAccess()
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+    @objc private func keyChanged() {
+        stopRecording()
+        if keyPopup.indexOfSelectedItem < 2 {
+            owner.setDictationKey(capsLock: keyPopup.indexOfSelectedItem == 0)
+        }
+        updateKeyNote()
+        if keyPopup.indexOfSelectedItem == 2 { recordShortcut() }
     }
 
-    @objc private func keyChanged() {
+    private var pendingSoloModifier: CGKeyCode?
+
+    @objc private func recordShortcut() {
+        if recordMonitor != nil {   // the button reads Cancel while recording
+            stopRecording()
+            updateKeyNote()
+            return
+        }
+        stopRecording()
+        recordButton.title = "Cancel"
+        showKeyCap(recording: true)
+        keyNote.stringValue = "Press the keys now: a combination such as ⌥ Space, or one modifier key on its own such as Right ⌥. Escape cancels."
+        bringToFront()
+        DebugLog.write("shortcut recorder: listening (app active=\(NSApp.isActive) window key=\(window.isKeyWindow))")
+        recordMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            MainActor.assumeIsolated { self?.recorderSaw(event) }
+            return nil
+        }
+        refresh()
+    }
+
+    private func recorderSaw(_ event: NSEvent) {
+        let flags = event.modifierFlags.intersection([.control, .option, .shift, .command])
+        DebugLog.write("shortcut recorder: \(event.type == .keyDown ? "keyDown" : "flagsChanged") code=\(event.keyCode) flags=\(flags.rawValue)")
+        if event.type == .keyDown {
+            pendingSoloModifier = nil
+            recorded(event)
+            return
+        }
+        // flagsChanged: a modifier went down or up. Any other key in between means a combination.
+        let code = CGKeyCode(event.keyCode)
+        if let pending = pendingSoloModifier, pending != code { pendingSoloModifier = nil }
+        guard let name = HotkeyDefinition.soloModifierName(for: code),
+              let (_, flag) = HotkeyDefinition.soloModifierKeys[name] else { return }
+        let isDown = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)).contains(flag)
+        if isDown {
+            pendingSoloModifier = flags.subtracting(NSEvent.ModifierFlags(rawValue: UInt(flag.rawValue))).isEmpty ? code : nil
+        } else if pendingSoloModifier == code {
+            pendingSoloModifier = nil
+            stopRecording()
+            let hotkey = HotkeySettings(key: name, modifiers: [])
+            owner.setDictationKey(hotkey, mapCapsLock: false)
+            DebugLog.write("shortcut recorder: saved \(name)")
+            updateKeyNote()
+        }
+    }
+
+    private func recorded(_ event: NSEvent) {
+        stopRecording()
+        if event.keyCode == 53 { updateKeyNote(); return }   // Escape
+        guard let name = HotkeyDefinition.keyName(for: CGKeyCode(event.keyCode)) else {
+            DebugLog.write("shortcut recorder: key code \(event.keyCode) is not supported")
+            keyNote.stringValue = "LocalFlow can't use that key. Try a letter, number, Space, or F13 to F20 with ⌘ ⌥ ⌃ or ⇧, or one modifier key on its own. Click Record shortcut to try again."
+            return
+        }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        var modifiers: [String] = []
+        if flags.contains(.control) { modifiers.append("control") }
+        if flags.contains(.option) { modifiers.append("option") }
+        if flags.contains(.shift) { modifiers.append("shift") }
+        if flags.contains(.command) { modifiers.append("command") }
+        let hotkey = HotkeySettings(key: name, modifiers: modifiers)
+        do {
+            _ = try HotkeyDefinition(settings: hotkey)
+        } catch {
+            DebugLog.write("shortcut recorder: \(name) \(modifiers) rejected: \(error.localizedDescription)")
+            keyNote.stringValue = "Add ⌘, ⌥, ⌃ or ⇧ to that key, so normal typing still works. Click Record shortcut to try again."
+            return
+        }
+        // Caps Lock reaches LocalFlow as F13 while the Caps Lock mapping is on: that press means Caps Lock.
+        if name == "f13", modifiers.isEmpty, owner.settings.mapCapsLock {
+            keyPopup.selectItem(at: 0)
+            owner.setDictationKey(capsLock: true)
+            updateKeyNote()
+            return
+        }
+        owner.setDictationKey(hotkey, mapCapsLock: false)
+        DebugLog.write("shortcut recorder: saved \(name) \(modifiers)")
         updateKeyNote()
-        owner.setDictationKey(capsLock: keyPopup.indexOfSelectedItem == 0)
+    }
+
+    private func stopRecording() {
+        if let recordMonitor { NSEvent.removeMonitor(recordMonitor) }
+        recordMonitor = nil
+        pendingSoloModifier = nil
+        recordButton.title = "Record shortcut"
     }
 
     @objc private func done() {
@@ -260,5 +435,10 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
             try? SMAppService.mainApp.register()
         }
         window.close()
+        let alert = NSAlert()
+        alert.messageText = "LocalFlow is ready"
+        alert.informativeText = "It lives in the menu bar at the top right of your screen (the waveform icon), not in the Dock. Press \(keyName) in any app, talk, and press it again. To change settings later, open LocalFlow again or click the menu-bar icon."
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 }

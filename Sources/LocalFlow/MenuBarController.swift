@@ -38,6 +38,7 @@ final class MenuBarController {
         menu.addItem(item("Reload Settings", action: #selector(ApplicationController.reloadSettings(_:))))
         menu.addItem(item("Request Permissions", action: #selector(ApplicationController.requestPermissions(_:))))
 
+        menu.addItem(item("Check for Updates…", action: #selector(ApplicationController.checkForUpdates(_:))))
         menu.addItem(.separator())
         let quit = item("Quit LocalFlow", action: #selector(ApplicationController.quit(_:)))
         quit.keyEquivalent = "q"

@@ -96,8 +96,12 @@ final class ApplicationController: NSObject {
     }
 
     func setDictationKey(capsLock: Bool) {
-        settings.mapCapsLock = capsLock
-        settings.hotkey = HotkeySettings(key: capsLock ? "f13" : "fn", modifiers: [])
+        setDictationKey(HotkeySettings(key: capsLock ? "f13" : "fn", modifiers: []), mapCapsLock: capsLock)
+    }
+
+    func setDictationKey(_ hotkey: HotkeySettings, mapCapsLock: Bool) {
+        settings.mapCapsLock = mapCapsLock
+        settings.hotkey = hotkey
         saveSettings()
         coordinator.update(settings: settings)
         applyCapsLockMapping(clearWhenOff: true)
@@ -180,8 +184,11 @@ final class ApplicationController: NSObject {
 
     @objc func requestPermissions(_ sender: Any?) {
         promptForAccessibility()
-        _ = CGRequestListenEventAccess()
         Task { _ = await AudioRecorder.requestPermission() }
+    }
+
+    @objc func checkForUpdates(_ sender: Any?) {
+        UpdateChecker.check()
     }
 
     @objc func quit(_ sender: Any?) {
@@ -205,7 +212,8 @@ final class ApplicationController: NSObject {
         } catch {
             DebugLog.write("hotkey start failed: \(error.localizedDescription)")
             lastError = error.localizedDescription
-            pill.show(.error(error.localizedDescription))
+            // While the setup window is open it already says what is missing; the pill would only alarm.
+            if setupWindow?.isVisible != true { pill.show(.error(error.localizedDescription)) }
             retryHotkeyWhenTrusted()
         }
     }

@@ -60,7 +60,6 @@ Almost done. macOS needs you to allow LocalFlow:
   1. Allow the Microphone prompt if one appears.
   2. In the Accessibility window that just opened, switch LocalFlow on
      (if it is missing, click + and choose /Applications/LocalFlow.app).
-  3. Do the same under Input Monitoring.
 LocalFlow starts listening a few seconds after Accessibility is on; no restart needed.
 
 To dictate: tap your dictation key, talk, then tap it again or press Enter.

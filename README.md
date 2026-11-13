@@ -18,7 +18,7 @@ Typical speed from your last tap to pasted text: about 0.3 seconds for a short s
 
 1. Download [LocalFlow.dmg](https://github.com/Ryan-Loofy/localflow-app/releases/latest/download/LocalFlow.dmg) (or from [localflowvoice.com](https://localflowvoice.com)), open it and drag LocalFlow into Applications.
 2. Open LocalFlow. It is not signed with an Apple Developer ID yet, so macOS says it could not verify LocalFlow and offers only **Done**: click it. Then open System Settings > Privacy & Security, scroll to the very bottom, and click **Open Anyway** next to "LocalFlow was blocked". Or skip that with Terminal: `xattr -dr com.apple.quarantine /Applications/LocalFlow.app`.
-3. In the LocalFlow window, click **Download** (the two models, 5.2 GB, once), allow the Microphone, Accessibility and Input Monitoring, and pick your dictation key.
+3. In the LocalFlow window, click **Download** (the two models, 5.2 GB, once), allow the Microphone and Accessibility, and pick your dictation key.
 
 The app carries its own speech server ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) and cleanup server ([llama.cpp](https://github.com/ggml-org/llama.cpp)), so nothing else needs installing. Models are kept in `~/Library/Application Support/LocalFlow/models` and checked against their published SHA-256 after download.
 
@@ -46,7 +46,6 @@ macOS requires you to switch these on by hand. The setup script opens the right 
 
 1. **Microphone**: allow the prompt when it appears.
 2. **Accessibility**: Apple menu > System Settings > Privacy & Security > Accessibility, switch LocalFlow on. If it is missing, click + and choose `/Applications/LocalFlow.app`.
-3. **Input Monitoring**: same place, switch LocalFlow on.
 
 LocalFlow starts listening a few seconds after Accessibility is on. If you use fn as the key, also set System Settings > Keyboard > "Press 🌐 key to" to **Do Nothing**, or fn will open the emoji picker too.
 

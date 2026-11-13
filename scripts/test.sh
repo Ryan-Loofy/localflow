@@ -12,6 +12,7 @@ xcrun swiftc \
   "$PROJECT_DIR/Sources/LocalFlow/HotkeyMonitor.swift" \
   "$PROJECT_DIR/Sources/LocalFlow/TranscriptCleaner.swift" \
   "$PROJECT_DIR/Sources/LocalFlow/DebugLog.swift" \
+  "$PROJECT_DIR/Sources/LocalFlow/UpdateChecker.swift" \
   "$PROJECT_DIR/Tests/SelfTest/main.swift" \
   -o "$OUTPUT_DIR/localflow-self-test"
 

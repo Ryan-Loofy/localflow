@@ -25,14 +25,30 @@ enum HotkeyError: LocalizedError {
 struct HotkeyDefinition {
     let keyCode: CGKeyCode
     let requiredFlags: CGEventFlags
-    let isFunctionKey: Bool
+    /// For a key that is itself a modifier (fn, Right ⌥...): the flag it sets while held.
+    let soloFlag: CGEventFlags?
+    var isFunctionKey: Bool { keyCode == 63 && soloFlag != nil }
+
+    /// Modifier keys that work as a dictation key on their own, by name: key code and flag.
+    static let soloModifierKeys: [String: (CGKeyCode, CGEventFlags)] = [
+        "right_option": (61, .maskAlternate), "left_option": (58, .maskAlternate),
+        "right_command": (54, .maskCommand), "left_command": (55, .maskCommand),
+        "right_control": (62, .maskControl), "left_control": (59, .maskControl),
+        "right_shift": (60, .maskShift), "left_shift": (56, .maskShift),
+    ]
 
     init(settings: HotkeySettings) throws {
         let normalizedKey = settings.key.lowercased()
         if normalizedKey == "fn" || normalizedKey == "function" {
             keyCode = 63
             requiredFlags = []
-            isFunctionKey = true
+            soloFlag = .maskSecondaryFn
+            return
+        }
+        if let (code, flag) = Self.soloModifierKeys[normalizedKey], settings.modifiers.isEmpty {
+            keyCode = code
+            requiredFlags = []
+            soloFlag = flag
             return
         }
 
@@ -54,14 +70,14 @@ struct HotkeyDefinition {
         }
         keyCode = code
         requiredFlags = flags
-        isFunctionKey = false
+        soloFlag = nil
     }
 
     func matchesKeyDown(type: CGEventType, event: CGEvent) -> Bool {
-        if isFunctionKey {
+        if let soloFlag {
             return type == .flagsChanged
                 && event.getIntegerValueField(.keyboardEventKeycode) == Int64(keyCode)
-                && event.flags.contains(.maskSecondaryFn)
+                && event.flags.contains(soloFlag)
         }
         guard type == .keyDown,
               event.getIntegerValueField(.keyboardEventKeycode) == Int64(keyCode) else { return false }
@@ -69,10 +85,10 @@ struct HotkeyDefinition {
     }
 
     func matchesKeyUp(type: CGEventType, event: CGEvent) -> Bool {
-        if isFunctionKey {
+        if let soloFlag {
             return type == .flagsChanged
                 && event.getIntegerValueField(.keyboardEventKeycode) == Int64(keyCode)
-                && !event.flags.contains(.maskSecondaryFn)
+                && !event.flags.contains(soloFlag)
         }
         return type == .keyUp && event.getIntegerValueField(.keyboardEventKeycode) == Int64(keyCode)
     }
@@ -99,6 +115,33 @@ struct HotkeyDefinition {
     private static let standaloneKeys: Set<String> = [
         "f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20"
     ]
+}
+
+extension HotkeyDefinition {
+    /// The settings name of a key code, for recording a custom shortcut.
+    static func keyName(for code: CGKeyCode) -> String? {
+        keyCodes.first { $0.value == code }?.key
+    }
+
+    /// The settings name of a modifier key pressed on its own, such as "right_option".
+    static func soloModifierName(for code: CGKeyCode) -> String? {
+        soloModifierKeys.first { $0.value.0 == code }?.key
+    }
+
+    /// How a shortcut reads in the UI, such as "⌥ Space" or "Caps Lock".
+    static func displayName(_ settings: HotkeySettings, capsLock: Bool) -> String {
+        if capsLock && settings.key == "f13" && settings.modifiers.isEmpty { return "Caps Lock" }
+        if settings.key == "fn" { return "fn" }
+        let solo: [String: String] = [
+            "right_option": "Right ⌥", "left_option": "Left ⌥", "right_command": "Right ⌘", "left_command": "Left ⌘",
+            "right_control": "Right ⌃", "left_control": "Left ⌃", "right_shift": "Right ⇧", "left_shift": "Left ⇧",
+        ]
+        if let name = solo[settings.key], settings.modifiers.isEmpty { return name }
+        let order: [(String, String)] = [("control", "⌃"), ("option", "⌥"), ("shift", "⇧"), ("command", "⌘")]
+        let mods = order.filter { settings.modifiers.contains($0.0) }.map(\.1).joined()
+        let key = settings.key.count == 1 ? settings.key.uppercased() : settings.key.capitalized
+        return mods.isEmpty ? key : "\(mods) \(key)"
+    }
 }
 
 final class HotkeyMonitor {
