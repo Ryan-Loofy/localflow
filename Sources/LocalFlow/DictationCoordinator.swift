@@ -16,6 +16,12 @@ final class DictationCoordinator {
     private var processingTask: Task<Void, Never>?
     private var secondTapTask: Task<Void, Never>?
     private var maximumDurationTask: Task<Void, Never>?
+    private var keepWarmTask: Task<Void, Never>?
+
+    /// macOS pages an idle model out to swap after roughly twenty minutes on a Mac short of memory,
+    /// and paging the 4.6 GB cleanup model back in took 26 s (Ollama log, 2026-11-16): the cleanup
+    /// waited behind it. A one-token request every four minutes keeps the weights resident.
+    static let keepWarmInterval: TimeInterval = 240
 
     var onPhaseChanged: ((DictationPhase) -> Void)?
     var onError: ((String) -> Void)?
@@ -37,6 +43,25 @@ final class DictationCoordinator {
         self.inserter = inserter ?? TextInserter()
         self.pill = pill
         self.environmentProvider = environmentProvider
+        startKeepingModelsWarm()
+    }
+
+    private func startKeepingModelsWarm() {
+        keepWarmTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.keepWarmInterval * 1_000_000_000))
+                guard let self else { return }
+                guard self.settings.enabled, self.machine.phase == .idle else { continue }
+                self.warmModels()
+            }
+        }
+    }
+
+    private func warmModels() {
+        transcriber.warmUp(settings: settings)
+        if let environment = try? environmentProvider() {
+            cleaner.warmUp(settings: settings.llm, environment: environment)
+        }
     }
 
     func update(settings: AppSettings) {
@@ -96,10 +121,7 @@ final class DictationCoordinator {
     }
 
     private func beginRecording() {
-        transcriber.warmUp(settings: settings)
-        if let environment = try? environmentProvider() {
-            cleaner.warmUp(settings: settings.llm, environment: environment)
-        }
+        warmModels()
         let id = UUID()
         sessionID = id
         maximumDurationTask?.cancel()
