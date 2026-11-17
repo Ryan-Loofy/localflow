@@ -140,6 +140,31 @@ do {
 }
 
 do {
+    // A Bluetooth headset can stop the engine mid-recording; the restarted engine writes a second
+    // segment, possibly at another rate, and both must reach whisper as one recording.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("localflow-segments-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var sources: [URL] = []
+    for (index, rate) in [48_000.0, 24_000.0].enumerated() {
+        let url = directory.appendingPathComponent("capture-\(index).caf")
+        let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(rate))!
+        buffer.frameLength = AVAudioFrameCount(rate)
+        try file.write(from: buffer)
+        sources.append(url)
+    }
+    let outputURL = directory.appendingPathComponent("out.wav")
+    try AudioRecorder.convertToWhisperWAV(sourceURLs: sources, outputURL: outputURL)
+    let output = try AVAudioFile(forReading: outputURL)
+    expect(output.length == 32_000, "segments at different rates join into one recording")
+} catch {
+    failureCount += 1
+    fputs("FAIL  segment conversion threw: \(error.localizedDescription)\n", stderr)
+}
+
+do {
     var machine = DictationStateMachine(doubleTapWindow: 0.35, tapToToggle: true)
     expect(machine.hotkeyDown(at: 10) == [.beginRecording, .showMode(.held)], "tap mode: press begins recording")
     expect(machine.hotkeyUp(at: 10.1) == [.showMode(.handsFree)], "tap mode: quick release keeps recording")
