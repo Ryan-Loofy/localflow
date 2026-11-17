@@ -195,6 +195,11 @@ do {
     fputs("FAIL  partial llm section threw: \(error)\n", stderr)
 }
 
+expect(HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 53, isRepeat: false, busy: true), "Escape cancels a dictation that is recording or transcribing")
+expect(!HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 53, isRepeat: false, busy: false), "Escape passes through when nothing is being dictated")
+expect(!HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 53, isRepeat: true, busy: true), "a held Escape cancels once, not on every repeat")
+expect(!HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 36, isRepeat: false, busy: true), "only Escape cancels")
+
 do {
     let silent = try WhisperTranscriber.serverTranscript(statusCode: 200, body: Data())
     let blank = try WhisperTranscriber.serverTranscript(statusCode: 200, body: Data(" [BLANK_AUDIO]\n".utf8))

@@ -85,6 +85,8 @@ final class DictationCoordinator {
     }
 
     var isCapturingAudio: Bool { machine.phase.isCapturingAudio }
+    /// Recording or transcribing: the times Escape has something to cancel.
+    var isBusy: Bool { machine.phase != .idle }
 
     /// Return pressed while recording: stop and transcribe, same as a second hotkey tap.
     func stopKeyPressed() {

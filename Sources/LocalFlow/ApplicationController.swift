@@ -35,7 +35,6 @@ final class ApplicationController: NSObject {
         onDown: { [weak self] time in self?.coordinator.hotkeyDown(at: time) },
         onUp: { [weak self] time in self?.coordinator.hotkeyUp(at: time) }
     )
-    private lazy var escapeMonitor = EscapeMonitor { [weak self] in self?.coordinator.cancel() }
     private lazy var menuBar = MenuBarController(owner: self)
 
     var statusText: String {
@@ -70,7 +69,8 @@ final class ApplicationController: NSObject {
         _ = menuBar
         hotkeyMonitor.isCapturing = { [weak self] in self?.coordinator.isCapturingAudio ?? false }
         hotkeyMonitor.onStopKey = { [weak self] in self?.coordinator.stopKeyPressed() }
-        escapeMonitor.start()
+        hotkeyMonitor.isBusy = { [weak self] in self?.coordinator.isBusy ?? false }
+        hotkeyMonitor.onEscape = { [weak self] in self?.coordinator.cancel() }
         applyCapsLockMapping()
         applyHotkeyState()
         if BundledServers.isBundled && (!missingModels.isEmpty || !AXIsProcessTrusted()) {
@@ -200,7 +200,6 @@ final class ApplicationController: NSObject {
         servers.stopAll()
         coordinator.cancel()
         hotkeyMonitor.stop()
-        escapeMonitor.stop()
     }
 
     private func applyHotkeyState() {

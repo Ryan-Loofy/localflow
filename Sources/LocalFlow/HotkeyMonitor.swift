@@ -157,6 +157,19 @@ final class HotkeyMonitor {
     var isCapturing: () -> Bool = { false }
     var onStopKey: () -> Void = {}
     private var swallowStopKeyUp = false
+    /// While a dictation is recording or transcribing, Escape cancels it and is swallowed. It is read in this
+    /// tap, which needs only Accessibility: the NSEvent monitor it replaced needed Input Monitoring, which
+    /// LocalFlow stopped requesting in 0.2.2, so Escape had silently stopped working.
+    var isBusy: () -> Bool = { false }
+    var onEscape: () -> Void = {}
+    private var swallowEscapeKeyUp = false
+
+    static let escapeKeyCode: Int64 = 53
+
+    /// True for the Escape press that should cancel a dictation: a fresh key-down (not auto-repeat) while busy.
+    static func escapeCancels(type: CGEventType, keyCode: Int64, isRepeat: Bool, busy: Bool) -> Bool {
+        type == .keyDown && keyCode == escapeKeyCode && !isRepeat && busy
+    }
 
     init(onDown: @escaping (TimeInterval) -> Void, onUp: @escaping (TimeInterval) -> Void) {
         self.onDown = onDown
@@ -218,6 +231,19 @@ final class HotkeyMonitor {
         }
         guard let definition else { return Unmanaged.passUnretained(event) }
         let code = event.getIntegerValueField(.keyboardEventKeycode)
+        if code == Self.escapeKeyCode {
+            let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            if Self.escapeCancels(type: type, keyCode: code, isRepeat: isRepeat, busy: isBusy()) {
+                swallowEscapeKeyUp = true
+                DebugLog.write("escape pressed during dictation; cancelling")
+                onEscape()
+                return nil
+            }
+            if type == .keyUp && swallowEscapeKeyUp {
+                swallowEscapeKeyUp = false
+                return nil
+            }
+        }
         if code == 36 || code == 76 {
             let modifiers = event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift])
             if type == .keyDown && modifiers.isEmpty && isCapturing() {
@@ -250,33 +276,5 @@ final class HotkeyMonitor {
             return nil
         }
         return Unmanaged.passUnretained(event)
-    }
-}
-
-final class EscapeMonitor {
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
-    private let onEscape: () -> Void
-
-    init(onEscape: @escaping () -> Void) {
-        self.onEscape = onEscape
-    }
-
-    func start() {
-        stop()
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 && !event.isARepeat { self?.onEscape() }
-        }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 && !event.isARepeat { self?.onEscape() }
-            return event
-        }
-    }
-
-    func stop() {
-        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
-        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
-        globalMonitor = nil
-        localMonitor = nil
     }
 }
