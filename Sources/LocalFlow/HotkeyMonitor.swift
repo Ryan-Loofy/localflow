@@ -171,6 +171,33 @@ final class HotkeyMonitor {
         type == .keyDown && keyCode == escapeKeyCode && !isRepeat && busy
     }
 
+    /// When the key actually moved, in seconds since boot (the clock `systemUptime` reads).
+    /// Timing a press by when the tap HANDLES it misread a quick tap as a hold: the first recording after
+    /// launch blocks the main thread for about a second, the key-up waits behind it, and the tap stopped
+    /// the dictation at once with no audio.
+    static func pressTime(of event: CGEvent) -> TimeInterval {
+        eventSeconds(timestamp: event.timestamp, machNow: mach_absolute_time(),
+                     uptimeNanosNow: clock_gettime_nsec_np(CLOCK_UPTIME_RAW),
+                     fallback: ProcessInfo.processInfo.systemUptime)
+    }
+
+    /// A CGEvent timestamp is nanoseconds on Intel and mach ticks on Apple silicon; whichever clock it sits
+    /// closer to now says which. Zero or a time in the future falls back to now.
+    static func eventSeconds(timestamp: UInt64, machNow: UInt64, uptimeNanosNow: UInt64, fallback: TimeInterval) -> TimeInterval {
+        guard timestamp > 0 else { return fallback }
+        let nanos: UInt64
+        if timestamp.distance(to: machNow).magnitude < timestamp.distance(to: uptimeNanosNow).magnitude {
+            guard timestamp <= machNow else { return fallback }
+            var timebase = mach_timebase_info_data_t()
+            mach_timebase_info(&timebase)
+            nanos = timestamp / UInt64(timebase.denom) * UInt64(timebase.numer)
+        } else {
+            guard timestamp <= uptimeNanosNow else { return fallback }
+            nanos = timestamp
+        }
+        return min(TimeInterval(nanos) / 1_000_000_000, fallback)
+    }
+
     init(onDown: @escaping (TimeInterval) -> Void, onUp: @escaping (TimeInterval) -> Void) {
         self.onDown = onDown
         self.onUp = onUp
@@ -266,13 +293,13 @@ final class HotkeyMonitor {
         if definition.matchesKeyDown(type: type, event: event) {
             if !keyIsDown {
                 keyIsDown = true
-                onDown(ProcessInfo.processInfo.systemUptime)
+                onDown(Self.pressTime(of: event))
             }
             return nil
         }
         if keyIsDown && definition.matchesKeyUp(type: type, event: event) {
             keyIsDown = false
-            onUp(ProcessInfo.processInfo.systemUptime)
+            onUp(Self.pressTime(of: event))
             return nil
         }
         return Unmanaged.passUnretained(event)

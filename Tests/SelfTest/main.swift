@@ -195,6 +195,23 @@ do {
     fputs("FAIL  partial llm section threw: \(error)\n", stderr)
 }
 
+var testTimebase = mach_timebase_info_data_t()
+mach_timebase_info(&testTimebase)
+let machNow: UInt64 = 1_000_000_000_000
+let machNowNanos = machNow / UInt64(testTimebase.denom) * UInt64(testTimebase.numer)
+let nsNow: UInt64 = machNowNanos
+let machTicksPerSecond = 1_000_000_000 * UInt64(testTimebase.denom) / UInt64(testTimebase.numer)
+if testTimebase.numer != testTimebase.denom {
+    let half = HotkeyMonitor.eventSeconds(timestamp: machNow - machTicksPerSecond / 2, machNow: machNow, uptimeNanosNow: nsNow * 40, fallback: 9e9)
+    expect(abs(half - (Double(machNowNanos) / 1e9 - 0.5)) < 0.001, "a mach-tick event timestamp converts to seconds since boot")
+}
+let nsEvent = HotkeyMonitor.eventSeconds(timestamp: 5_000_000_000_000 - 250_000_000, machNow: 10, uptimeNanosNow: 5_000_000_000_000, fallback: 9e9)
+expect(abs(nsEvent - 4999.75) < 0.000001, "a nanosecond event timestamp reads as seconds since boot")
+expect(HotkeyMonitor.eventSeconds(timestamp: 0, machNow: machNow, uptimeNanosNow: nsNow, fallback: 42) == 42, "a zero timestamp falls back to now")
+var tapMachine = DictationStateMachine(doubleTapWindow: 0.35, tapToToggle: true)
+_ = tapMachine.hotkeyDown(at: 100.0)
+// The key-up is handled 1.2 s late, but its event says it moved 0.1 s after the press: still a tap.
+expect(tapMachine.hotkeyUp(at: 100.1) == [.showMode(.handsFree)], "a quick tap timed by its own event stays a tap")
 expect(HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 53, isRepeat: false, busy: true), "Escape cancels a dictation that is recording or transcribing")
 expect(!HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 53, isRepeat: false, busy: false), "Escape passes through when nothing is being dictated")
 expect(!HotkeyMonitor.escapeCancels(type: .keyDown, keyCode: 53, isRepeat: true, busy: true), "a held Escape cancels once, not on every repeat")
