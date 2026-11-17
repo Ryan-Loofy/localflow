@@ -195,6 +195,19 @@ do {
     fputs("FAIL  partial llm section threw: \(error)\n", stderr)
 }
 
+do {
+    let silent = try WhisperTranscriber.serverTranscript(statusCode: 200, body: Data())
+    let blank = try WhisperTranscriber.serverTranscript(statusCode: 200, body: Data(" [BLANK_AUDIO]\n".utf8))
+    let quiet = try WhisperTranscriber.serverTranscript(statusCode: 200, body: Data("(silence)".utf8))
+    let words = try WhisperTranscriber.serverTranscript(statusCode: 200, body: Data(" Hello there.\n".utf8))
+    expect(silent == "" && blank == "" && quiet == "", "a server that heard no speech returns nothing, not an error")
+    expect(words == "Hello there.", "a server transcript is trimmed and kept")
+    expect((try? WhisperTranscriber.serverTranscript(statusCode: 500, body: Data("boom".utf8))) == nil, "a server error still falls back to whisper-cli")
+} catch {
+    failureCount += 1
+    fputs("FAIL  serverTranscript threw: \(error)\n", stderr)
+}
+
 if failureCount > 0 {
     fputs("\n\(failureCount) self-test(s) failed.\n", stderr)
     exit(1)

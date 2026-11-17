@@ -86,11 +86,16 @@ final class WhisperTranscriber {
         request.timeoutInterval = 30
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.upload(for: request, from: body)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw WhisperError.missingOutput
-        }
-        let transcript = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { throw WhisperError.missingOutput }
+        return try Self.serverTranscript(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
+    }
+
+    /// A server error falls back to whisper-cli. A server that answered but heard no speech returns "":
+    /// treating that as a failure sent a fresh install, which has no whisper-cli, to a "not found" error.
+    static func serverTranscript(statusCode: Int, body: Data) throws -> String {
+        guard (200..<300).contains(statusCode) else { throw WhisperError.missingOutput }
+        let transcript = String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Whisper marks silence with a bracketed tag such as [BLANK_AUDIO] or (silence) instead of words.
+        if transcript.range(of: #"^[\[(][^\])]*[\])]$"#, options: .regularExpression) != nil { return "" }
         return transcript
     }
 

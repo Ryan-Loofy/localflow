@@ -183,6 +183,11 @@ final class DictationCoordinator {
                 let (rawTranscript, engine) = try await self.transcriber.transcribe(audioURL: audioURL, settings: self.settings)
                 timing.mark("whisper_\(engine)")
                 try Task.checkCancellation()
+                guard !rawTranscript.isEmpty else {
+                    DebugLog.write("no speech heard; nothing to insert")
+                    self.complete(id: id)
+                    return
+                }
 
                 let environment = try self.environmentProvider()
                 let finalTranscript: String
