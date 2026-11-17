@@ -1,3 +1,4 @@
+import AVFoundation
 import Darwin
 import Foundation
 
@@ -6,6 +7,7 @@ enum WhisperError: LocalizedError {
     case modelMissing(String)
     case processFailed(Int32, String)
     case missingOutput
+    case serverFailed(String)
     case cancelled
 
     var errorDescription: String? {
@@ -18,6 +20,8 @@ enum WhisperError: LocalizedError {
             return "whisper-cli exited with status \(status): \(detail)"
         case .missingOutput:
             return "whisper-cli completed without producing a transcript."
+        case .serverFailed(let detail):
+            return "The speech server could not transcribe this recording: \(detail)"
         case .cancelled:
             return "Transcription was cancelled."
         }
@@ -31,6 +35,11 @@ final class WhisperTranscriber {
     /// Returns the transcript and which engine produced it ("server" or "cli").
     /// The resident whisper-server keeps the model loaded; the CLI is the fallback when it is down.
     func transcribe(audioURL: URL, settings: AppSettings) async throws -> (String, String) {
+        // A tap too quick to hold any sound makes a file with no audio frames. whisper-server
+        // rejects it ("failed to read audio data"), so it is "no speech", not a server failure.
+        if let frames = Self.audioFrames(audioURL), Self.isTooShortForSpeech(frames: frames) {
+            return ("", "none")
+        }
         if let serverURL = URL(string: settings.whisperServerURL), !settings.whisperServerURL.isEmpty {
             do {
                 return (try await transcribeWithServer(audioURL: audioURL, serverURL: serverURL), "server")
@@ -39,10 +48,23 @@ final class WhisperTranscriber {
             } catch let error as URLError where error.code == .cancelled {
                 throw CancellationError()
             } catch {
+                // The downloadable app has no whisper-cli: report the server's error, not a missing CLI.
+                guard FileManager.default.isExecutableFile(atPath: PathResolver.expand(settings.whisperExecutable)) else {
+                    throw WhisperError.serverFailed(error.localizedDescription)
+                }
                 DebugLog.write("whisper-server unavailable, using whisper-cli: \(error.localizedDescription)")
             }
         }
         return (try await transcribeWithCLI(audioURL: audioURL, settings: settings), "cli")
+    }
+
+    /// Under a tenth of a second (1,600 frames at 16 kHz) holds no word.
+    static func isTooShortForSpeech(frames: Int64, sampleRate: Double = 16_000) -> Bool {
+        Double(frames) < sampleRate / 10
+    }
+
+    static func audioFrames(_ url: URL) -> Int64? {
+        (try? AVAudioFile(forReading: url))?.length
     }
 
     /// Fired when recording starts: half a second of silence pages the model back in.

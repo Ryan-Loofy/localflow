@@ -213,6 +213,16 @@ do {
     fputs("FAIL  serverTranscript threw: \(error)\n", stderr)
 }
 
+expect(WhisperTranscriber.isTooShortForSpeech(frames: 0) && !WhisperTranscriber.isTooShortForSpeech(frames: 16_000), "a recording with no audio frames is no speech, a second of audio is transcribed")
+do {
+    let empty = FileManager.default.temporaryDirectory.appendingPathComponent("localflow-selftest-empty.wav")
+    try WhisperTranscriber.silentWAV(seconds: 0).write(to: empty)
+    expect(WhisperTranscriber.audioFrames(empty) == 0, "an empty recording reads as zero frames")
+} catch {
+    failureCount += 1
+    fputs("FAIL  empty recording threw: \(error)\n", stderr)
+}
+
 if failureCount > 0 {
     fputs("\n\(failureCount) self-test(s) failed.\n", stderr)
     exit(1)
