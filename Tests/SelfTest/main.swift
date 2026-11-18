@@ -265,6 +265,128 @@ do {
     fputs("FAIL  empty recording threw: \(error)\n", stderr)
 }
 
+do {
+    var settings = AppSettings()
+    expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", settings: settings) == .casual, "Slack writes casually by default")
+    expect(Personalization.style(forApp: "com.apple.mail", settings: settings) == .formal, "Mail writes formally by default")
+    expect(Personalization.style(forApp: "com.apple.Terminal", settings: settings) == .standard, "an unlisted app gets the default style")
+    expect(Personalization.style(forApp: nil, settings: settings) == .standard, "no front app gets the default style")
+    settings.appStyles = ["com.tinyspeck.slackmacgap": "Formal", "com.apple.Terminal": "raw", "x.y": "nonsense"]
+    settings.defaultStyle = .casual
+    expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", settings: settings) == .formal, "appStyles overrides the built-in list, in any case")
+    expect(Personalization.style(forApp: "com.apple.Terminal", settings: settings) == .raw, "an app can be set to raw")
+    expect(Personalization.style(forApp: "x.y", settings: settings) == .casual, "an unknown style name falls back to the default")
+}
+
+do {
+    var dictionary = DictionarySettings()
+    expect(Personalization.whisperPrompt(dictionary) == nil, "no words sends no Whisper prompt")
+    dictionary.words = ["Loofy", " Porkbun ", "", "loofy"]
+    dictionary.replacements = ["ingest data": "Ingest Data", "kay eight s": "k8s"]
+    expect(Personalization.spellings(dictionary) == ["Loofy", "Porkbun", "Ingest Data", "k8s"], "spellings are trimmed, de-duplicated, then replacement targets")
+    expect(Personalization.whisperPrompt(dictionary) == "Loofy, Porkbun, Ingest Data, k8s", "words become a comma-separated Whisper prompt")
+    dictionary.words = (0..<300).map { "Word\($0)" }
+    expect((Personalization.whisperPrompt(dictionary)?.count ?? 0) <= Personalization.whisperPromptCharacterLimit, "a long dictionary is trimmed to fit Whisper's prompt")
+}
+
+do {
+    let replacements = ["ingest": "IngestHQ", "ingest data": "Ingest Data", "c++": "C++", "a$1": "$5"]
+    expect(Personalization.applyReplacements("ask ingest  DATA about ingestion", replacements) == "ask Ingest Data about ingestion", "replacements match whole phrases in any case, longest first")
+    expect(Personalization.applyReplacements("I like c++.", replacements) == "I like C++.", "replacement keys with symbols are matched literally")
+    expect(Personalization.applyReplacements("price a$1 now", replacements) == "price $5 now", "replacement text is inserted literally")
+}
+
+do {
+    let snippets = ["my calendar link": "https://cal.com/ryan", "sign off": "Best,\nRyan"]
+    expect(Personalization.wholeSnippet("My calendar link.", snippets) == "https://cal.com/ryan", "a dictation that is only a trigger pastes the snippet")
+    expect(Personalization.wholeSnippet("Here is my calendar link.", snippets) == nil, "a longer dictation is not a whole snippet")
+    expect(Personalization.expandSnippets("Book a time here: my calendar link.", snippets) == "Book a time here: https://cal.com/ryan.", "a trigger inside text is replaced in place")
+    expect(Personalization.expandSnippets("My Calendar Link works", snippets) == "https://cal.com/ryan works", "inline triggers match in any case")
+    expect(Personalization.expandSnippets("a calendar linked", snippets) == "a calendar linked", "partial words do not trigger a snippet")
+}
+
+do {
+    expect(Personalization.finish("Sounds good.", style: .casual) == "Sounds good", "casual drops the closing period")
+    expect(Personalization.finish("Wait for it...", style: .casual) == "Wait for it...", "casual keeps an ellipsis")
+    expect(Personalization.finish("1. One.\n2. Two.", style: .casual) == "1. One.\n2. Two.", "casual leaves multi-line text alone")
+    expect(Personalization.finish("Sounds good.", style: .formal) == "Sounds good.", "formal keeps the period")
+}
+
+do {
+    let casual = TranscriptCleaner.messages(for: "x", style: .casual, spellings: ["Loofy"])
+    expect(casual.count == 12, "a style adds one worked example")
+    expect(TranscriptCleaner.messages(for: "x", style: .formal).count == 14, "formal adds two worked examples, one without a sign-off")
+    expect(casual.first?["content"]?.contains("Style: a chat message") == true, "casual adds its rule to the system prompt")
+    expect(casual.first?["content"]?.hasSuffix("Spell these words exactly as written here: Loofy.") == true, "dictionary words become a spelling rule")
+    expect(TranscriptCleaner.messages(for: "x", style: .standard).first?["content"] == TranscriptCleaner.systemPrompt, "standard keeps the original prompt")
+}
+
+do {
+    let json = #"{"dictionary":{"words":["Loofy"]},"defaultStyle":"casual","appStyles":{"a.b":"formal"}}"#
+    let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+    expect(settings.dictionary.words == ["Loofy"] && settings.dictionary.snippets.isEmpty, "a partial dictionary keeps the other defaults")
+    expect(settings.defaultStyle == .casual && settings.appStyles["a.b"] == "formal", "styles load from settings")
+} catch {
+    failureCount += 1
+    fputs("FAIL  dictionary settings threw: \(error)\n", stderr)
+}
+
+expect(DictionarySettings.words(fromRows: [" Snowflake ", "", "snowflake", "Qwen"]) == ["Snowflake", "Qwen"], "the word list is trimmed, has no blanks and no duplicates")
+expect(DictionarySettings.pairs(fromRows: [("Paytas", "Payiatis"), ("paytas", "Other"), ("Jess", ""), ("", "x"), (" Alima ", " Ollama ")]) == ["Paytas": "Payiatis", "Alima": "Ollama"], "a half-filled row is dropped and the first of two same keys wins")
+expect(DictionarySettings.rows(["b": "2", "A": "1"]).map { $0.0 } == ["A", "b"], "rows show in the same order each time")
+expect(Personalization.correctionCandidate(" Paytas, ") == "Paytas" && Personalization.correctionCandidate(" . ") == nil, "a selected word loses its punctuation")
+
+do {
+    var voice = AppSettings()
+    expect(Personalization.style(forApp: "company.thebrowser.Browser", host: "www.linkedin.com", settings: voice) == .post, "LinkedIn in a browser writes a post")
+    expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", host: nil, settings: voice) == .casual, "with no tab the app decides")
+    expect(Personalization.style(forApp: "com.google.Chrome", host: "notlinkedin.com", settings: voice) == voice.defaultStyle, "a lookalike domain is not LinkedIn")
+    voice.siteStyles = ["linkedin.com": "casual"]
+    expect(Personalization.style(forApp: "com.google.Chrome", host: "linkedin.com", settings: voice) == .casual, "your site rule beats the built-in one")
+    voice.styleExamples = ["casual": ["Ok sweet - maybe at the gym? Shouldn\u{2019}t take long"], "post": ["Line one.\n\nSee https://example.com\nLast line."]]
+    let casual = Personalization.personalExamples(voice, style: .casual)
+    expect(casual.count == 1 && casual[0].written.hasPrefix("Ok sweet") && casual[0].spoken.hasPrefix("ok um sweet") && !casual[0].spoken.contains("?"), "your message becomes a spoken to written example")
+    expect(Personalization.personalExamples(voice, style: .post)[0].written == "Line one.\n\nLast line.", "a line with a link is left out of an example")
+    let turns = TranscriptCleaner.messages(for: "hi", style: .casual, personal: casual)
+    expect(turns.contains { $0["content"] == casual[0].written } && !turns.contains { ($0["content"] ?? "").contains("3 PM tomorrow") }, "your examples replace the generic one")
+    expect(TranscriptCleaner.messages(for: "hi", style: .standard, personal: casual).count == TranscriptCleaner.messages(for: "hi").count, "standard style ignores personal examples")
+}
+
+expect(Personalization.finish("Over the last 8 months we built it. Any API to any destination.", style: .post) == "Over the last 8 months we built it.\n\nAny API to any destination.", "a post gets a paragraph per sentence")
+expect(Personalization.finish("It went from 4.5 to 6. Done.", style: .post) == "It went from 4.5 to 6.\n\nDone.", "a decimal does not end a sentence")
+expect(Personalization.finish("Line one.\n\nLine two.", style: .post) == "Line one.\n\nLine two.", "a post that already has paragraphs is left alone")
+
+do {
+    var edit = AppSettings()
+    edit.hotkey = HotkeySettings(key: "f13", modifiers: [])
+    expect(edit.effectiveEditHotkey == HotkeySettings(key: "f13", modifiers: ["option"]), "the edit shortcut is the dictation key plus Option")
+    expect(HotkeyDefinition.displayName(edit.effectiveEditHotkey!, capsLock: true) == "⌥ Caps Lock", "the edit shortcut reads as ⌥ Caps Lock")
+    edit.hotkey = HotkeySettings(key: "space", modifiers: ["option"])
+    expect(edit.effectiveEditHotkey == HotkeySettings(key: "space", modifiers: ["option", "shift"]), "an Option shortcut gets Shift for editing")
+    edit.hotkey = HotkeySettings(key: "right_option", modifiers: [])
+    expect(edit.effectiveEditHotkey == nil, "a lone modifier key has no edit shortcut")
+    edit.editHotkey = HotkeySettings(key: "e", modifiers: ["control", "option"])
+    expect(edit.effectiveEditHotkey?.key == "e", "a set edit shortcut wins")
+    edit.editHotkey = HotkeySettings(key: "", modifiers: [])
+    expect(edit.effectiveEditHotkey == nil, "an empty edit shortcut turns editing off")
+    let decoded = try? JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+    expect(decoded?.editHotkey == nil, "old settings files decode with no edit shortcut")
+}
+expect(TranscriptCleaner.asksForOwnVoice("make it sound like me") && TranscriptCleaner.asksForOwnVoice("rewrite in my style") && !TranscriptCleaner.asksForOwnVoice("make it friendlier"), "only an ask for your voice brings in your writing")
+do {
+    let turns = TranscriptCleaner.editMessages(text: "We shipped it.", instruction: "in my voice", voice: ["Ok sweet"])
+    expect(turns.first?["content"]?.contains("Ok sweet") == true, "your writing goes in when you ask for your voice")
+    expect(TranscriptCleaner.editMessages(text: "x", instruction: "shorter", voice: ["Ok sweet"]).first?["content"]?.contains("Ok sweet") == false, "your writing stays out otherwise")
+    expect(turns.last?["content"] == "<text>We shipped it.</text>\n<instruction>in my voice</instruction>", "the text and the instruction are tagged apart")
+}
+expect(TranscriptCleaner.unwrapEdit("<text>Hi Dana,</text>\n") == "Hi Dana,", "echoed tags are stripped from an edit")
+
+expect(SelectionReader.rangeBeforeCaret(value: "Hi. Ship it Friday.", caret: 19, text: "Ship it Friday.") == NSRange(location: 4, length: 15), "the last dictation right before the cursor is found")
+expect(SelectionReader.rangeBeforeCaret(value: "Ship it Friday. More", caret: 20, text: "Ship it Friday.") == nil, "typing after the dictation stops it being edited")
+expect(SelectionReader.rangeBeforeCaret(value: "Ship 🚀 now", caret: 11, text: "🚀 now") == NSRange(location: 5, length: 6), "an emoji counts as two UTF-16 units")
+expect(SelectionReader.rangeBeforeCaret(value: "abc", caret: 9, text: "abc") == nil, "a caret past the end is refused")
+expect(SelectionReader.sameText("Line one.\r\n\r\nLine two. ", "Line one.\n\nLine two.") && !SelectionReader.sameText("Line one.", "Line two."), "a pasted copy matches across line endings only")
+
 if failureCount > 0 {
     fputs("\n\(failureCount) self-test(s) failed.\n", stderr)
     exit(1)

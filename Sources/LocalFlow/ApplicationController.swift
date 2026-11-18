@@ -10,6 +10,9 @@ final class ApplicationController: NSObject {
     private let pill = FloatingPillController()
     private let servers = BundledServers()
     private var setupWindow: SetupWindowController?
+    private var dictionaryWindow: DictionaryWindowController?
+    /// The last text LocalFlow typed, in memory only, so a misheard word can be corrected.
+    private(set) var lastDictation: String?
     private var lastError: String?
 
     private lazy var coordinator: DictationCoordinator = {
@@ -22,6 +25,11 @@ final class ApplicationController: NSObject {
         )
         coordinator.onPhaseChanged = { [weak self] phase in
             if phase != .idle { self?.lastError = nil }
+            self?.menuBar.refresh()
+        }
+        coordinator.onDictated = { [weak self] text in
+            self?.lastDictation = text
+            self?.dictionaryWindow?.refreshLastDictation()
             self?.menuBar.refresh()
         }
         coordinator.onError = { [weak self] message in
@@ -71,6 +79,7 @@ final class ApplicationController: NSObject {
         hotkeyMonitor.onStopKey = { [weak self] in self?.coordinator.stopKeyPressed() }
         hotkeyMonitor.isBusy = { [weak self] in self?.coordinator.isBusy ?? false }
         hotkeyMonitor.onEscape = { [weak self] in self?.coordinator.cancel() }
+        hotkeyMonitor.onEditDown = { [weak self] time in self?.coordinator.editHotkeyDown(at: time) }
         applyCapsLockMapping()
         applyHotkeyState()
         if BundledServers.isBundled && (!missingModels.isEmpty || !AXIsProcessTrusted()) {
@@ -87,6 +96,29 @@ final class ApplicationController: NSObject {
             setupWindow = SetupWindowController(owner: self, models: BundledServers.neededModels(settings, environment: environment))
         }
         setupWindow?.show()
+    }
+
+    @objc func showDictionary(_ sender: Any?) {
+        if dictionaryWindow == nil { dictionaryWindow = DictionaryWindowController(owner: self) }
+        dictionaryWindow?.show()
+    }
+
+    @objc func correctLastDictation(_ sender: Any?) {
+        if dictionaryWindow == nil { dictionaryWindow = DictionaryWindowController(owner: self) }
+        dictionaryWindow?.showCorrections()
+    }
+
+    func setDictionary(_ dictionary: DictionarySettings) {
+        guard dictionary != settings.dictionary else { return }
+        settings.dictionary = dictionary
+        saveSettings()
+        coordinator.updateDictionary(dictionary)
+    }
+
+    /// LocalFlow shows in the Dock while one of its windows is open, and leaves it when the last one closes.
+    func windowClosed(_ window: NSWindow) {
+        let othersOpen = NSApp.windows.contains { $0 !== window && $0.isVisible && $0.styleMask.contains(.titled) }
+        if !othersOpen { NSApp.setActivationPolicy(.accessory) }
     }
 
     /// Called by the setup window when a download finishes.
@@ -206,7 +238,7 @@ final class ApplicationController: NSObject {
         hotkeyMonitor.stop()
         guard settings.enabled else { return }
         do {
-            try hotkeyMonitor.start(settings: settings.hotkey)
+            try hotkeyMonitor.start(settings: settings.hotkey, edit: settings.effectiveEditHotkey)
             lastError = nil
         } catch {
             DebugLog.write("hotkey start failed: \(error.localizedDescription)")

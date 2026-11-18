@@ -34,7 +34,8 @@ final class WhisperTranscriber {
 
     /// Returns the transcript and which engine produced it ("server" or "cli").
     /// The resident whisper-server keeps the model loaded; the CLI is the fallback when it is down.
-    func transcribe(audioURL: URL, settings: AppSettings) async throws -> (String, String) {
+    /// `prompt` is the dictionary's words: Whisper spells them as written when it hears them.
+    func transcribe(audioURL: URL, settings: AppSettings, prompt: String? = nil) async throws -> (String, String) {
         // A tap too quick to hold any sound makes a file with no audio frames. whisper-server
         // rejects it ("failed to read audio data"), so it is "no speech", not a server failure.
         if let frames = Self.audioFrames(audioURL), Self.isTooShortForSpeech(frames: frames) {
@@ -42,7 +43,7 @@ final class WhisperTranscriber {
         }
         if let serverURL = URL(string: settings.whisperServerURL), !settings.whisperServerURL.isEmpty {
             do {
-                return (try await transcribeWithServer(audioURL: audioURL, serverURL: serverURL), "server")
+                return (try await transcribeWithServer(audioURL: audioURL, serverURL: serverURL, prompt: prompt), "server")
             } catch is CancellationError {
                 throw CancellationError()
             } catch let error as URLError where error.code == .cancelled {
@@ -55,7 +56,7 @@ final class WhisperTranscriber {
                 DebugLog.write("whisper-server unavailable, using whisper-cli: \(error.localizedDescription)")
             }
         }
-        return (try await transcribeWithCLI(audioURL: audioURL, settings: settings), "cli")
+        return (try await transcribeWithCLI(audioURL: audioURL, settings: settings, prompt: prompt), "cli")
     }
 
     /// Under a tenth of a second (1,600 frames at 16 kHz) holds no word.
@@ -75,7 +76,7 @@ final class WhisperTranscriber {
             try? Self.silentWAV(seconds: 0.5).write(to: silenceURL)
         }
         Task.detached(priority: .utility) { [weak self] in
-            _ = try? await self?.transcribeWithServer(audioURL: silenceURL, serverURL: serverURL)
+            _ = try? await self?.transcribeWithServer(audioURL: silenceURL, serverURL: serverURL, prompt: nil)
         }
     }
 
@@ -91,7 +92,7 @@ final class WhisperTranscriber {
         return d
     }
 
-    private func transcribeWithServer(audioURL: URL, serverURL: URL) async throws -> String {
+    private func transcribeWithServer(audioURL: URL, serverURL: URL, prompt: String?) async throws -> String {
         let boundary = "LocalFlow-\(UUID().uuidString)"
         var body = Data()
         func field(_ name: String, _ value: String) {
@@ -99,6 +100,7 @@ final class WhisperTranscriber {
         }
         field("response_format", "text")
         field("temperature", "0.0")
+        if let prompt { field("prompt", prompt) }
         body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
         body.append(try Data(contentsOf: audioURL))
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
@@ -121,7 +123,7 @@ final class WhisperTranscriber {
         return transcript
     }
 
-    private func transcribeWithCLI(audioURL: URL, settings: AppSettings) async throws -> String {
+    private func transcribeWithCLI(audioURL: URL, settings: AppSettings, prompt: String?) async throws -> String {
         let executablePath = PathResolver.expand(settings.whisperExecutable)
         let modelPath = PathResolver.expand(settings.whisperModel)
         guard FileManager.default.isExecutableFile(atPath: executablePath) else {
@@ -146,7 +148,7 @@ final class WhisperTranscriber {
             "--output-txt",
             "--output-file", outputPrefix.path,
             "--no-prints"
-        ]
+        ] + (prompt.map { ["--prompt", $0] } ?? [])
         let logHandle = try FileHandle(forWritingTo: logURL)
         process.standardOutput = logHandle
         process.standardError = logHandle

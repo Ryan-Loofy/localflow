@@ -3,6 +3,7 @@ import AppKit
 enum PillState {
     case recordingHeld
     case recordingHandsFree
+    case recordingEdit
     case transcribing
     case error(String)
 }
@@ -76,6 +77,7 @@ private final class PillView: NSView {
             switch state {
             case .recordingHeld: return (.systemRed, "Recording · hold")
             case .recordingHandsFree: return (.systemOrange, "Recording · hands-free")
+            case .recordingEdit: return (.systemPurple, "Say how to change it")
             case .transcribing: return (.systemBlue, "Transcribing…")
             case .error(let message): return (.systemRed, String(message.prefix(28)))
             }

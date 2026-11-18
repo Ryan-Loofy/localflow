@@ -139,7 +139,7 @@ extension HotkeyDefinition {
         if let name = solo[settings.key], settings.modifiers.isEmpty { return name }
         let order: [(String, String)] = [("control", "⌃"), ("option", "⌥"), ("shift", "⇧"), ("command", "⌘")]
         let mods = order.filter { settings.modifiers.contains($0.0) }.map(\.1).joined()
-        let key = settings.key.count == 1 ? settings.key.uppercased() : settings.key.capitalized
+        let key = capsLock && settings.key == "f13" ? "Caps Lock" : (settings.key.count == 1 ? settings.key.uppercased() : settings.key.capitalized)
         return mods.isEmpty ? key : "\(mods) \(key)"
     }
 }
@@ -148,6 +148,10 @@ final class HotkeyMonitor {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var definition: HotkeyDefinition?
+    /// The edit-by-voice shortcut, checked before the dictation key; its release ends the press like any other.
+    private var editDefinition: HotkeyDefinition?
+    private var downDefinition: HotkeyDefinition?
+    var onEditDown: (TimeInterval) -> Void = { _ in }
     private var keyIsDown = false
     private var otherKeyEvents = 0
     private let onDown: (TimeInterval) -> Void
@@ -205,9 +209,10 @@ final class HotkeyMonitor {
 
     deinit { stop() }
 
-    func start(settings: HotkeySettings) throws {
+    func start(settings: HotkeySettings, edit: HotkeySettings? = nil) throws {
         stop()
         definition = try HotkeyDefinition(settings: settings)
+        editDefinition = edit.flatMap { try? HotkeyDefinition(settings: $0) }
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
             | CGEventMask(1 << CGEventType.keyUp.rawValue)
             | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
@@ -248,6 +253,8 @@ final class HotkeyMonitor {
         runLoopSource = nil
         eventTap = nil
         definition = nil
+        editDefinition = nil
+        downDefinition = nil
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -290,14 +297,23 @@ final class HotkeyMonitor {
             otherKeyEvents = 0
         }
 
+        if let editDefinition, editDefinition.matchesKeyDown(type: type, event: event) {
+            if !keyIsDown {
+                keyIsDown = true
+                downDefinition = editDefinition
+                onEditDown(Self.pressTime(of: event))
+            }
+            return nil
+        }
         if definition.matchesKeyDown(type: type, event: event) {
             if !keyIsDown {
                 keyIsDown = true
+                downDefinition = definition
                 onDown(Self.pressTime(of: event))
             }
             return nil
         }
-        if keyIsDown && definition.matchesKeyUp(type: type, event: event) {
+        if keyIsDown && (downDefinition ?? definition).matchesKeyUp(type: type, event: event) {
             keyIsDown = false
             onUp(Self.pressTime(of: event))
             return nil

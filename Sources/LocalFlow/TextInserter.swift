@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-private struct ClipboardSnapshot {
+struct ClipboardSnapshot {
     let items: [[NSPasteboard.PasteboardType: Data]]
 
     init(pasteboard: NSPasteboard) {

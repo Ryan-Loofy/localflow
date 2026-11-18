@@ -21,6 +21,12 @@ final class MenuBarController {
         let status = NSMenuItem(title: owner.statusText, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
+        if let edit = owner.settings.effectiveEditHotkey {
+            let name = HotkeyDefinition.displayName(edit, capsLock: owner.settings.mapCapsLock)
+            let hint = NSMenuItem(title: "Edit the last dictation or a selection: \(name)", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            menu.addItem(hint)
+        }
         menu.addItem(.separator())
 
         let enabled = item("Enabled", action: #selector(ApplicationController.toggleEnabled(_:)))
@@ -33,6 +39,10 @@ final class MenuBarController {
 
         menu.addItem(.separator())
         menu.addItem(item("Set Up LocalFlow...", action: #selector(ApplicationController.showSetup(_:))))
+        menu.addItem(item("Dictionary…", action: #selector(ApplicationController.showDictionary(_:))))
+        let correct = item("Correct Last Dictation…", action: #selector(ApplicationController.correctLastDictation(_:)))
+        if owner.lastDictation == nil { correct.action = nil }
+        menu.addItem(correct)
         menu.addItem(item("Open Settings File", action: #selector(ApplicationController.openSettingsFile(_:))))
         menu.addItem(item("Open .env File", action: #selector(ApplicationController.openEnvironmentFile(_:))))
         menu.addItem(item("Reload Settings", action: #selector(ApplicationController.reloadSettings(_:))))

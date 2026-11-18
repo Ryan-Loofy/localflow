@@ -65,7 +65,7 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
         pollTimer?.invalidate()
         pollTimer = nil
         stopRecording()
-        NSApp.setActivationPolicy(.accessory)
+        owner.windowClosed(window)
     }
 
     private func bringToFront() {

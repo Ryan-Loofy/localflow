@@ -3,6 +3,9 @@ import Foundation
 struct AppSettings: Codable, Equatable {
     var enabled = true
     var hotkey = HotkeySettings()
+    /// Edit by voice: select text, press this, say how to change it. Unset means the dictation key plus Option;
+    /// an empty key turns it off.
+    var editHotkey: HotkeySettings?
     var doubleTapWindowMilliseconds = 350
     var maxRecordingSeconds = 300
     var restorePreviousClipboard = false
@@ -16,6 +19,16 @@ struct AppSettings: Codable, Equatable {
     /// Caps Lock becomes F13 while LocalFlow runs, so it can be the dictation key.
     var mapCapsLock = false
     var llm = LLMCleanupSettings()
+    /// Your words, replacements and snippets.
+    var dictionary = DictionarySettings()
+    /// The style for apps not listed in `appStyles` or LocalFlow's built-in list.
+    var defaultStyle = WritingStyle.standard
+    /// App bundle identifier → "standard", "casual", "formal" or "raw". Overrides the built-in list.
+    var appStyles: [String: String] = [:]
+    /// Website → style, for text written in a browser: "linkedin.com" → "post". Overrides the built-in list.
+    var siteStyles: [String: String] = [:]
+    /// Style → messages you wrote yourself. Cleanup learns your voice from them instead of a generic example.
+    var styleExamples: [String: [String]] = [:]
 
     var doubleTapWindow: TimeInterval {
         TimeInterval(max(150, doubleTapWindowMilliseconds)) / 1_000
@@ -33,6 +46,7 @@ extension AppSettings {
         let d = AppSettings()
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? d.enabled
         hotkey = try c.decodeIfPresent(HotkeySettings.self, forKey: .hotkey) ?? d.hotkey
+        editHotkey = try c.decodeIfPresent(HotkeySettings.self, forKey: .editHotkey)
         doubleTapWindowMilliseconds = try c.decodeIfPresent(Int.self, forKey: .doubleTapWindowMilliseconds) ?? d.doubleTapWindowMilliseconds
         maxRecordingSeconds = try c.decodeIfPresent(Int.self, forKey: .maxRecordingSeconds) ?? d.maxRecordingSeconds
         restorePreviousClipboard = try c.decodeIfPresent(Bool.self, forKey: .restorePreviousClipboard) ?? d.restorePreviousClipboard
@@ -45,12 +59,30 @@ extension AppSettings {
         skipCleanupWhenClean = try c.decodeIfPresent(Bool.self, forKey: .skipCleanupWhenClean) ?? d.skipCleanupWhenClean
         mapCapsLock = try c.decodeIfPresent(Bool.self, forKey: .mapCapsLock) ?? d.mapCapsLock
         llm = try c.decodeIfPresent(LLMCleanupSettings.self, forKey: .llm) ?? d.llm
+        dictionary = try c.decodeIfPresent(DictionarySettings.self, forKey: .dictionary) ?? d.dictionary
+        defaultStyle = try c.decodeIfPresent(WritingStyle.self, forKey: .defaultStyle) ?? d.defaultStyle
+        appStyles = try c.decodeIfPresent([String: String].self, forKey: .appStyles) ?? d.appStyles
+        siteStyles = try c.decodeIfPresent([String: String].self, forKey: .siteStyles) ?? d.siteStyles
+        styleExamples = try c.decodeIfPresent([String: [String]].self, forKey: .styleExamples) ?? d.styleExamples
     }
 }
 
 struct HotkeySettings: Codable, Equatable {
     var key = "fn"
     var modifiers: [String] = []
+}
+
+extension AppSettings {
+    /// The edit-by-voice shortcut in use, or nil when there is none. By default it is the dictation key with
+    /// Option added (Caps Lock becomes ⌥ Caps Lock). fn and a lone modifier key get none unless one is set,
+    /// since holding Option with them would also read as the dictation key.
+    var effectiveEditHotkey: HotkeySettings? {
+        if let editHotkey { return editHotkey.key.isEmpty ? nil : editHotkey }
+        let key = hotkey.key.lowercased()
+        if key == "fn" || key == "function" || key.hasPrefix("left_") || key.hasPrefix("right_") { return nil }
+        let extra = hotkey.modifiers.contains { ["option", "alt"].contains($0.lowercased()) } ? "shift" : "option"
+        return HotkeySettings(key: hotkey.key, modifiers: hotkey.modifiers + [extra])
+    }
 }
 
 struct LLMCleanupSettings: Codable, Equatable {
