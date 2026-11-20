@@ -56,7 +56,8 @@ enum Personalization {
     /// A site rule wins over the browser's app rule; otherwise the app decides.
     static func style(forApp bundleID: String?, host: String?, settings: AppSettings) -> WritingStyle {
         if let host = host?.lowercased() {
-            let rules = builtInSiteStyles.mapValues(\.rawValue).merging(settings.siteStyles) { _, mine in mine }
+            let builtIn = settings.builtInStyles ? builtInSiteStyles.mapValues(\.rawValue) : [:]
+            let rules = builtIn.merging(settings.siteStyles) { _, mine in mine }
             for (site, name) in rules where host == site.lowercased() || host.hasSuffix("." + site.lowercased()) {
                 if let style = WritingStyle(rawValue: name.lowercased()) { return style }
             }
@@ -69,7 +70,7 @@ enum Personalization {
         if let name = settings.appStyles[bundleID] {
             return WritingStyle(rawValue: name.lowercased()) ?? settings.defaultStyle
         }
-        return builtInAppStyles[bundleID] ?? settings.defaultStyle
+        return (settings.builtInStyles ? builtInAppStyles[bundleID] : nil) ?? settings.defaultStyle
     }
 
     /// Whisper reads about 224 tokens of prompt; past that the start is dropped. 600 characters stays well inside it.

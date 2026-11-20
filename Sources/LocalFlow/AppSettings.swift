@@ -20,6 +20,9 @@ struct AppSettings: Codable, Equatable {
     var dictionary = DictionarySettings()
     /// The style for apps not listed in `appStyles` or LocalFlow's built-in list.
     var defaultStyle = WritingStyle.standard
+    /// LocalFlow's own per-app and per-site styles (Slack casual, Mail formal, LinkedIn a post). Off unless set:
+    /// they are tested on one person's dictations. Your own `appStyles` and `siteStyles` apply either way.
+    var builtInStyles = false
     /// App bundle identifier → "standard", "casual", "formal" or "raw". Overrides the built-in list.
     var appStyles: [String: String] = [:]
     /// Website → style, for text written in a browser: "linkedin.com" → "post". Overrides the built-in list.
@@ -57,6 +60,7 @@ extension AppSettings {
         llm = try c.decodeIfPresent(LLMCleanupSettings.self, forKey: .llm) ?? d.llm
         dictionary = try c.decodeIfPresent(DictionarySettings.self, forKey: .dictionary) ?? d.dictionary
         defaultStyle = try c.decodeIfPresent(WritingStyle.self, forKey: .defaultStyle) ?? d.defaultStyle
+        builtInStyles = try c.decodeIfPresent(Bool.self, forKey: .builtInStyles) ?? d.builtInStyles
         appStyles = try c.decodeIfPresent([String: String].self, forKey: .appStyles) ?? d.appStyles
         siteStyles = try c.decodeIfPresent([String: String].self, forKey: .siteStyles) ?? d.siteStyles
         styleExamples = try c.decodeIfPresent([String: [String]].self, forKey: .styleExamples) ?? d.styleExamples

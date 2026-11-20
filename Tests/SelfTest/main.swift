@@ -267,8 +267,9 @@ do {
 
 do {
     var settings = AppSettings()
-    expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", settings: settings) == .casual, "Slack writes casually by default")
-    expect(Personalization.style(forApp: "com.apple.mail", settings: settings) == .formal, "Mail writes formally by default")
+    settings.builtInStyles = true
+    expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", settings: settings) == .casual, "Slack writes casually with built-in styles on")
+    expect(Personalization.style(forApp: "com.apple.mail", settings: settings) == .formal, "Mail writes formally with built-in styles on")
     expect(Personalization.style(forApp: "com.apple.Terminal", settings: settings) == .standard, "an unlisted app gets the default style")
     expect(Personalization.style(forApp: nil, settings: settings) == .standard, "no front app gets the default style")
     settings.appStyles = ["com.tinyspeck.slackmacgap": "Formal", "com.apple.Terminal": "raw", "x.y": "nonsense"]
@@ -338,6 +339,13 @@ expect(Personalization.correctionCandidate(" Postgress, ") == "Postgress" && Per
 
 do {
     var voice = AppSettings()
+    expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", host: nil, settings: voice) == .standard
+           && Personalization.style(forApp: "company.thebrowser.Browser", host: "www.linkedin.com", settings: voice) == .standard,
+           "built-in styles are off by default")
+    voice.siteStyles = ["example.com": "formal"]
+    expect(Personalization.style(forApp: "com.google.Chrome", host: "example.com", settings: voice) == .formal, "your own site rule applies with built-ins off")
+    voice.siteStyles = [:]
+    voice.builtInStyles = true
     expect(Personalization.style(forApp: "company.thebrowser.Browser", host: "www.linkedin.com", settings: voice) == .post, "LinkedIn in a browser writes a post")
     expect(Personalization.style(forApp: "com.tinyspeck.slackmacgap", host: nil, settings: voice) == .casual, "with no tab the app decides")
     expect(Personalization.style(forApp: "com.google.Chrome", host: "notlinkedin.com", settings: voice) == voice.defaultStyle, "a lookalike domain is not LinkedIn")
