@@ -18,13 +18,6 @@ final class DictationCoordinator {
     private var secondTapTask: Task<Void, Never>?
     private var maximumDurationTask: Task<Void, Never>?
     private var keepWarmTask: Task<Void, Never>?
-    /// Set while an edit-by-voice session runs: the selected text, read while the instruction is spoken.
-    private var editSelection: Task<String?, Never>?
-    /// An edit session is recording its instruction; the selection is read once recording stops.
-    private var editPending = false
-    private var startingEdit = false
-    /// What LocalFlow pasted last, so an edit with nothing selected can work on it.
-    private var lastInserted: String?
 
     /// macOS pages an idle model out to swap after roughly twenty minutes on a Mac short of memory,
     /// and paging the 4.6 GB cleanup model back in took 26 s (Ollama log, 2026-11-16): the cleanup
@@ -102,16 +95,6 @@ final class DictationCoordinator {
         notifyPhase()
     }
 
-    /// The edit shortcut: from idle it starts an edit of the selected text; mid-dictation it acts as the dictation key.
-    func editHotkeyDown(at time: TimeInterval) {
-        DebugLog.write("edit hotkey down, phase=\(machine.phase) enabled=\(settings.enabled)")
-        guard settings.enabled else { return }
-        startingEdit = machine.phase == .idle
-        perform(machine.hotkeyDown(at: time))
-        startingEdit = false
-        notifyPhase()
-    }
-
     func hotkeyUp(at time: TimeInterval) {
         guard settings.enabled else { return }
         perform(machine.hotkeyUp(at: time))
@@ -142,7 +125,7 @@ final class DictationCoordinator {
             case .beginRecording:
                 beginRecording()
             case .showMode(let mode):
-                pill.show(editPending ? .recordingEdit : (mode == .held ? .recordingHeld : .recordingHandsFree))
+                pill.show(mode == .held ? .recordingHeld : .recordingHandsFree)
             case .scheduleSecondTapTimeout(let delay):
                 scheduleSecondTapTimeout(after: delay)
             case .cancelSecondTapTimeout:
@@ -159,16 +142,6 @@ final class DictationCoordinator {
     private func beginRecording() {
         let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         // In a browser the website decides (LinkedIn writes a post). The host is used here and never logged.
-        if startingEdit {
-            editPending = true
-            DebugLog.write("edit by voice for app=\(app ?? "unknown")")
-            sessionStyle = .standard
-            warmModels()
-            beginSession()
-            return
-        }
-        editPending = false
-        editSelection = nil
         let host = BrowserTab.host(forApp: app)
         sessionStyle = Personalization.style(forApp: app, host: host, settings: settings)
         DebugLog.write("recording for app=\(app ?? "unknown") style=\(sessionStyle.rawValue)\(host == nil ? "" : " (from the browser tab)")")
@@ -237,12 +210,6 @@ final class DictationCoordinator {
                 var timing = TimingLog.Entry()
                 let audioURL = try self.recorder.stopAndConvert()
                 timing.mark("audio")
-                // Selecting sends keystrokes to the front app, so it waits until the microphone is off,
-                // then runs while the instruction is transcribed.
-                if self.editPending {
-                    let last = self.lastInserted
-                    self.editSelection = Task { await SelectionReader.target(lastInserted: last) }
-                }
                 let dictionary = self.settings.dictionary
                 let style = self.sessionStyle
                 let (heard, engine) = try await self.transcriber.transcribe(
@@ -253,11 +220,6 @@ final class DictationCoordinator {
                 guard !heard.isEmpty else {
                     DebugLog.write("no speech heard; nothing to insert")
                     self.complete(id: id)
-                    return
-                }
-
-                if let selectionTask = self.editSelection {
-                    try await self.applyEdit(instruction: heard, selection: await selectionTask.value, id: id, timing: timing)
                     return
                 }
 
@@ -305,7 +267,6 @@ final class DictationCoordinator {
                 )
                 timing.mark("paste")
                 TimingLog.write(timing, words: finalTranscript.split(separator: " ").count)
-                self.lastInserted = finalTranscript
                 self.onDictated?(finalTranscript)
                 self.complete(id: id)
             } catch is CancellationError {
@@ -318,41 +279,7 @@ final class DictationCoordinator {
         }
     }
 
-    /// Rewrites the selection as the spoken instruction says and pastes the result over it. With nothing
-    /// selected it says so and changes nothing; if the model fails, the selection is left as it was.
-    private func applyEdit(instruction: String, selection: String?, id: UUID, timing: TimingLog.Entry) async throws {
-        var timing = timing
-        editSelection = nil
-        editPending = false
-        guard let selection, !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            fail(id: id, message: "Nothing to edit: select some text, or dictate first.")
-            return
-        }
-        let style = Personalization.style(forApp: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, settings: settings)
-        let voice = Personalization.personalExamples(settings, style: style == .standard ? .casual : style).map(\.written)
-        let rewritten = try await cleaner.edit(
-            selection, instruction: instruction, settings: settings.llm, environment: try environmentProvider(),
-            spellings: Personalization.spellings(settings.dictionary), voice: voice
-        )
-        timing.mark("edit")
-        try Task.checkCancellation()
-        guard sessionID == id else { return }
-        try await inserter.insert(
-            rewritten,
-            restorePreviousClipboard: settings.restorePreviousClipboard,
-            restoreDelay: TimeInterval(settings.clipboardRestoreDelayMilliseconds) / 1_000
-        )
-        timing.mark("paste")
-        TimingLog.write(timing, words: rewritten.split(separator: " ").count)
-        lastInserted = rewritten
-        onDictated?(rewritten)
-        complete(id: id)
-    }
-
     private func cancelEverything() {
-        editSelection?.cancel()
-        editSelection = nil
-        editPending = false
         sessionID = nil
         secondTapTask?.cancel()
         maximumDurationTask?.cancel()
@@ -369,8 +296,6 @@ final class DictationCoordinator {
 
     private func complete(id: UUID) {
         guard sessionID == id else { return }
-        editSelection = nil
-        editPending = false
         recorder.discardFiles()
         sessionID = nil
         recordingStartTask = nil
@@ -382,8 +307,6 @@ final class DictationCoordinator {
 
     private func fail(id: UUID?, message: String) {
         if let id, sessionID != id { return }
-        editSelection = nil
-        editPending = false
         transcriber.cancel()
         recorder.cancelAndPrewarm()
         sessionID = nil

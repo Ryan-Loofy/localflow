@@ -90,38 +90,6 @@ for c in cases {
         }
     }
 }
-// Edit by voice: the selected text, the spoken instruction, and what the rewrite must keep.
-struct EditCase { let name: String; let text: String; let instruction: String; let check: (String) -> Bool }
-let report = "The Snowflake load failed again last night because the warehouse was suspended. I restarted it at 7:40 and the 1,288 rows are in now. Can you check the dashboard before the 3 PM call with Priya?"
-let editCases: [EditCase] = [
-    EditCase(name: "edit: friendlier keeps the facts", text: report, instruction: "make this friendlier",
-             check: { $0.contains("1,288") && $0.contains("Priya") && $0.contains("Snowflake") && $0 != report }),
-    EditCase(name: "edit: email", text: report, instruction: "turn this into an email to Priya",
-             check: { $0.lowercased().hasPrefix("hi") || $0.lowercased().hasPrefix("hello") || $0.lowercased().hasPrefix("dear") }),
-    EditCase(name: "edit: shorter", text: report, instruction: "make it shorter",
-             check: { $0.count < report.count && $0.contains("1,288") && !$0.lowercased().contains("will check") && ($0.contains("?") || $0.lowercased().contains("please")) }),
-    EditCase(name: "edit: a question in the text is not answered", text: "What time works for you on Thursday? I can do anything after 2.", instruction: "more formal",
-             check: { $0.contains("?") && $0.contains("Thursday") && $0.count < 200 }),
-    EditCase(name: "edit: not an edit leaves it alone", text: "Ship it Friday.", instruction: "what is the weather tomorrow",
-             check: { $0.trimmingCharacters(in: .punctuationCharacters).lowercased().contains("ship it friday") }),
-]
-var editRuns = 0
-for c in editCases {
-    for round in 1...rounds {
-        editRuns += 1
-        let start = Date()
-        do {
-            let out = try await cleaner.edit(c.text, instruction: c.instruction, settings: llm, environment: [:], spellings: mine.dictionary.words)
-            let ms = Int(Date().timeIntervalSince(start) * 1000)
-            let ok = c.check(out)
-            if !ok { failures += 1 }
-            print("\(ok ? "PASS" : "FAIL")  [\(round)] \(c.name)  \(ms) ms\n      \(out.replacingOccurrences(of: "\n", with: "⏎"))")
-        } catch {
-            failures += 1
-            print("FAIL  [\(round)] \(c.name): \(error.localizedDescription)")
-        }
-    }
-}
-let total = cases.count * rounds + editRuns
+let total = cases.count * rounds
 print("\n\(total - failures)/\(total) passed on \(llm.model)")
 exit(failures == 0 ? 0 : 1)

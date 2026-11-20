@@ -356,36 +356,6 @@ expect(Personalization.finish("Over the last 8 months we built it. Any API to an
 expect(Personalization.finish("It went from 4.5 to 6. Done.", style: .post) == "It went from 4.5 to 6.\n\nDone.", "a decimal does not end a sentence")
 expect(Personalization.finish("Line one.\n\nLine two.", style: .post) == "Line one.\n\nLine two.", "a post that already has paragraphs is left alone")
 
-do {
-    var edit = AppSettings()
-    edit.hotkey = HotkeySettings(key: "f13", modifiers: [])
-    expect(edit.effectiveEditHotkey == HotkeySettings(key: "f13", modifiers: ["option"]), "the edit shortcut is the dictation key plus Option")
-    expect(HotkeyDefinition.displayName(edit.effectiveEditHotkey!, capsLock: true) == "⌥ Caps Lock", "the edit shortcut reads as ⌥ Caps Lock")
-    edit.hotkey = HotkeySettings(key: "space", modifiers: ["option"])
-    expect(edit.effectiveEditHotkey == HotkeySettings(key: "space", modifiers: ["option", "shift"]), "an Option shortcut gets Shift for editing")
-    edit.hotkey = HotkeySettings(key: "right_option", modifiers: [])
-    expect(edit.effectiveEditHotkey == nil, "a lone modifier key has no edit shortcut")
-    edit.editHotkey = HotkeySettings(key: "e", modifiers: ["control", "option"])
-    expect(edit.effectiveEditHotkey?.key == "e", "a set edit shortcut wins")
-    edit.editHotkey = HotkeySettings(key: "", modifiers: [])
-    expect(edit.effectiveEditHotkey == nil, "an empty edit shortcut turns editing off")
-    let decoded = try? JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
-    expect(decoded?.editHotkey == nil, "old settings files decode with no edit shortcut")
-}
-expect(TranscriptCleaner.asksForOwnVoice("make it sound like me") && TranscriptCleaner.asksForOwnVoice("rewrite in my style") && !TranscriptCleaner.asksForOwnVoice("make it friendlier"), "only an ask for your voice brings in your writing")
-do {
-    let turns = TranscriptCleaner.editMessages(text: "We shipped it.", instruction: "in my voice", voice: ["Ok sweet"])
-    expect(turns.first?["content"]?.contains("Ok sweet") == true, "your writing goes in when you ask for your voice")
-    expect(TranscriptCleaner.editMessages(text: "x", instruction: "shorter", voice: ["Ok sweet"]).first?["content"]?.contains("Ok sweet") == false, "your writing stays out otherwise")
-    expect(turns.last?["content"] == "<text>We shipped it.</text>\n<instruction>in my voice</instruction>", "the text and the instruction are tagged apart")
-}
-expect(TranscriptCleaner.unwrapEdit("<text>Hi Dana,</text>\n") == "Hi Dana,", "echoed tags are stripped from an edit")
-
-expect(SelectionReader.rangeBeforeCaret(value: "Hi. Ship it Friday.", caret: 19, text: "Ship it Friday.") == NSRange(location: 4, length: 15), "the last dictation right before the cursor is found")
-expect(SelectionReader.rangeBeforeCaret(value: "Ship it Friday. More", caret: 20, text: "Ship it Friday.") == nil, "typing after the dictation stops it being edited")
-expect(SelectionReader.rangeBeforeCaret(value: "Ship 🚀 now", caret: 11, text: "🚀 now") == NSRange(location: 5, length: 6), "an emoji counts as two UTF-16 units")
-expect(SelectionReader.rangeBeforeCaret(value: "abc", caret: 9, text: "abc") == nil, "a caret past the end is refused")
-expect(SelectionReader.sameText("Line one.\r\n\r\nLine two. ", "Line one.\n\nLine two.") && !SelectionReader.sameText("Line one.", "Line two."), "a pasted copy matches across line endings only")
 
 if failureCount > 0 {
     fputs("\n\(failureCount) self-test(s) failed.\n", stderr)

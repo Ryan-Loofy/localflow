@@ -14,7 +14,6 @@ xcrun swiftc \
   "$PROJECT_DIR/Sources/LocalFlow/Personalization.swift" \
   "$PROJECT_DIR/Sources/LocalFlow/DebugLog.swift" \
   "$PROJECT_DIR/Sources/LocalFlow/UpdateChecker.swift" \
-  "$PROJECT_DIR/Sources/LocalFlow/SelectionReader.swift" \
   "$PROJECT_DIR/Sources/LocalFlow/TextInserter.swift" \
   "$PROJECT_DIR/Sources/LocalFlow/WhisperTranscriber.swift" \
   "$PROJECT_DIR/Tests/SelfTest/main.swift" \

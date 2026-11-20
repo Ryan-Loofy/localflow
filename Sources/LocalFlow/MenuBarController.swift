@@ -21,12 +21,6 @@ final class MenuBarController {
         let status = NSMenuItem(title: owner.statusText, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
-        if let edit = owner.settings.effectiveEditHotkey {
-            let name = HotkeyDefinition.displayName(edit, capsLock: owner.settings.mapCapsLock)
-            let hint = NSMenuItem(title: "Edit the last dictation or a selection: \(name)", action: nil, keyEquivalent: "")
-            hint.isEnabled = false
-            menu.addItem(hint)
-        }
         menu.addItem(.separator())
 
         let enabled = item("Enabled", action: #selector(ApplicationController.toggleEnabled(_:)))

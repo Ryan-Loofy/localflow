@@ -79,7 +79,6 @@ final class ApplicationController: NSObject {
         hotkeyMonitor.onStopKey = { [weak self] in self?.coordinator.stopKeyPressed() }
         hotkeyMonitor.isBusy = { [weak self] in self?.coordinator.isBusy ?? false }
         hotkeyMonitor.onEscape = { [weak self] in self?.coordinator.cancel() }
-        hotkeyMonitor.onEditDown = { [weak self] time in self?.coordinator.editHotkeyDown(at: time) }
         applyCapsLockMapping()
         applyHotkeyState()
         if BundledServers.isBundled && (!missingModels.isEmpty || !AXIsProcessTrusted()) {
@@ -238,7 +237,7 @@ final class ApplicationController: NSObject {
         hotkeyMonitor.stop()
         guard settings.enabled else { return }
         do {
-            try hotkeyMonitor.start(settings: settings.hotkey, edit: settings.effectiveEditHotkey)
+            try hotkeyMonitor.start(settings: settings.hotkey)
             lastError = nil
         } catch {
             DebugLog.write("hotkey start failed: \(error.localizedDescription)")
