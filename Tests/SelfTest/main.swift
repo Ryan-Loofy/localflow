@@ -332,9 +332,9 @@ do {
 }
 
 expect(DictionarySettings.words(fromRows: [" Snowflake ", "", "snowflake", "Qwen"]) == ["Snowflake", "Qwen"], "the word list is trimmed, has no blanks and no duplicates")
-expect(DictionarySettings.pairs(fromRows: [("Paytas", "Payiatis"), ("paytas", "Other"), ("Jess", ""), ("", "x"), (" Alima ", " Ollama ")]) == ["Paytas": "Payiatis", "Alima": "Ollama"], "a half-filled row is dropped and the first of two same keys wins")
+expect(DictionarySettings.pairs(fromRows: [("Postgress", "Postgres"), ("postgress", "Other"), ("Jest", ""), ("", "x"), (" Alima ", " Ollama ")]) == ["Postgress": "Postgres", "Alima": "Ollama"], "a half-filled row is dropped and the first of two same keys wins")
 expect(DictionarySettings.rows(["b": "2", "A": "1"]).map { $0.0 } == ["A", "b"], "rows show in the same order each time")
-expect(Personalization.correctionCandidate(" Paytas, ") == "Paytas" && Personalization.correctionCandidate(" . ") == nil, "a selected word loses its punctuation")
+expect(Personalization.correctionCandidate(" Postgress, ") == "Postgress" && Personalization.correctionCandidate(" . ") == nil, "a selected word loses its punctuation")
 
 do {
     var voice = AppSettings()

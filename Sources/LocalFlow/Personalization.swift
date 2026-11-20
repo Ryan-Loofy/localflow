@@ -196,7 +196,7 @@ extension DictionarySettings {
 }
 
 extension Personalization {
-    /// The word to correct from a selection in the last dictation: "Paytas," becomes "Paytas".
+    /// The word to correct from a selection in the last dictation: "Postgress," becomes "Postgress".
     static func correctionCandidate(_ selection: String) -> String? {
         let trimmed = selection.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         return trimmed.isEmpty ? nil : trimmed
